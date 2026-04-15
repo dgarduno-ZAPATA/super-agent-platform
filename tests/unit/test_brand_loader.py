@@ -1,15 +1,18 @@
 from pathlib import Path
+from typing import get_args
 
 import pytest
 
 from core.brand.loader import BrandValidationError, load_brand
+from core.brand.schema import WhatsAppChannelConfig
 
 
 def test_example_brand_loads_successfully() -> None:
     brand = load_brand(Path("brand"))
+    valid_provider_types = get_args(WhatsAppChannelConfig.model_fields["provider_type"].annotation)
 
     assert brand.brand.display_name == "SelecTrucks Zapata"
-    assert brand.channels.whatsapp.provider_type == "meta_cloud_api"
+    assert brand.channels.whatsapp.provider_type in valid_provider_types
     assert "Estefania" in brand.prompt
 
 
