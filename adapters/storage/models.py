@@ -33,7 +33,7 @@ class LeadProfileModel(Base):
     phone: Mapped[str] = mapped_column(Text, nullable=False, unique=True, index=True)
     name: Mapped[str | None] = mapped_column(Text)
     source: Mapped[str | None] = mapped_column(Text)
-    metadata_json: Mapped[dict[str, object]] = mapped_column(
+    attributes: Mapped[dict[str, object]] = mapped_column(
         "metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
     created_at: Mapped[datetime] = mapped_column(
