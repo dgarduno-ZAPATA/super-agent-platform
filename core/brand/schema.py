@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -85,7 +85,7 @@ class CRMMappingConfig(StrictConfigModel):
 
 
 class WhatsAppChannelConfig(StrictConfigModel):
-    provider_type: str
+    provider_type: Literal["evolution", "meta_cloud"]
     api_version: str
     phone_number_id: str
     template_namespace: str

@@ -1,5 +1,5 @@
 whatsapp:
-  provider_type: meta_cloud_api
+  provider_type: meta_cloud
   api_version: v20.0
   phone_number_id: "123456789012345"
   template_namespace: selectrucks_zapata_sales
