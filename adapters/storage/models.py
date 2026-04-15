@@ -11,11 +11,11 @@ from sqlalchemy import (
     Index,
     Integer,
     SmallInteger,
-    String,
     Text,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -91,9 +91,7 @@ class ConversationEventModel(Base):
             "uq_conversation_events_inbound_message_id",
             text("(payload ->> 'message_id')"),
             unique=True,
-            postgresql_where=text(
-                "event_type = 'inbound_message' AND payload ? 'message_id'"
-            ),
+            postgresql_where=text("event_type = 'inbound_message' AND payload ? 'message_id'"),
         ),
     )
 
@@ -115,9 +113,7 @@ class OutboundQueueModel(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False)
     scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    attempts: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0")
-    )
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     last_error: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
@@ -143,9 +139,7 @@ class CRMOutboxModel(Base):
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
     status: Mapped[str] = mapped_column(Text, nullable=False)
-    attempts: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0")
-    )
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
@@ -193,9 +187,7 @@ class SilencedUserModel(Base):
     )
     silenced_by: Mapped[str] = mapped_column(Text, nullable=False)
 
-    __table_args__ = (
-        CheckConstraint("phone ~ '^[0-9]+$'", name="ck_silenced_users_phone_digits"),
-    )
+    __table_args__ = (CheckConstraint("phone ~ '^[0-9]+$'", name="ck_silenced_users_phone_digits"),)
 
 
 class CampaignRunModel(Base):
@@ -239,9 +231,7 @@ class FeatureFlagModel(Base):
     __tablename__ = "feature_flags"
 
     key: Mapped[str] = mapped_column(Text, primary_key=True)
-    enabled: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("false")
-    )
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     config: Mapped[dict[str, object]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )

@@ -9,8 +9,8 @@ from pydantic import ValidationError
 from core.brand.schema import (
     Brand,
     BrandConfig,
-    CRMMappingConfig,
     ChannelsConfig,
+    CRMMappingConfig,
     FunnelConfig,
     OutboundTemplatesConfig,
     PoliciesConfig,

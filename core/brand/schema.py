@@ -27,7 +27,7 @@ class FunnelConfig(StrictConfigModel):
     states: list[FunnelStateConfig]
 
     @model_validator(mode="after")
-    def validate_transitions(self) -> "FunnelConfig":
+    def validate_transitions(self) -> FunnelConfig:
         known_states = {state.name for state in self.states}
 
         for state in self.states:

@@ -63,6 +63,13 @@ types-PyYAML = "^6.0.12.12"
 [tool.black]
 line-length = 100
 target-version = ["py311"]
+extend-exclude = '''
+(
+    pytest-cache-files-.*
+  | tmp.*
+  | \.pytest_tmp
+)
+'''
 
 [tool.ruff]
 line-length = 100
@@ -88,6 +95,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 pythonpath = ["."]
+norecursedirs = [".pytest_tmp", "pytest-cache-files-*", "tmp*"]
 
 [build-system]
 requires = ["poetry-core"]

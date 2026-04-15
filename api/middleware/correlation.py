@@ -3,8 +3,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware.base import RequestResponseEndpoint
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 from core.observability.context import bind_context, clear_context
 from core.observability.logging import REQUEST_ID_HEADER

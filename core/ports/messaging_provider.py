@@ -4,9 +4,7 @@ from core.domain.messaging import InboundEvent, MessageDeliveryReceipt
 
 
 class MessagingProvider(Protocol):
-    async def send_text(
-        self, to: str, text: str, correlation_id: str
-    ) -> MessageDeliveryReceipt:
+    async def send_text(self, to: str, text: str, correlation_id: str) -> MessageDeliveryReceipt:
         """Send plain text to a recipient and return a canonical delivery receipt."""
 
     async def send_image(

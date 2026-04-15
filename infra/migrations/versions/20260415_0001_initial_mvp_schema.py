@@ -351,19 +351,11 @@ def downgrade() -> None:
     op.drop_index("uq_crm_outbox_pending_operation", table_name="crm_outbox")
     op.drop_index("ix_crm_outbox_status_next_retry_at", table_name="crm_outbox")
     op.drop_table("crm_outbox")
-    op.drop_index(
-        "ix_outbound_queue_status_priority_scheduled_at", table_name="outbound_queue"
-    )
+    op.drop_index("ix_outbound_queue_status_priority_scheduled_at", table_name="outbound_queue")
     op.drop_table("outbound_queue")
-    op.drop_index(
-        "uq_conversation_events_inbound_message_id", table_name="conversation_events"
-    )
-    op.drop_index(
-        "ix_conversation_events_created_at", table_name="conversation_events"
-    )
-    op.drop_index(
-        "ix_conversation_events_conversation_id", table_name="conversation_events"
-    )
+    op.drop_index("uq_conversation_events_inbound_message_id", table_name="conversation_events")
+    op.drop_index("ix_conversation_events_created_at", table_name="conversation_events")
+    op.drop_index("ix_conversation_events_conversation_id", table_name="conversation_events")
     op.drop_table("conversation_events")
     op.drop_index("ix_sessions_lead_id", table_name="sessions")
     op.drop_table("sessions")

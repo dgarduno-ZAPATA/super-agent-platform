@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 import sys
 from typing import Any, Literal
 
@@ -41,7 +40,9 @@ def mask_pii(value: str, kind: Literal["phone", "email", "name"]) -> str:
     return " ".join(masked_parts)
 
 
-def _mask_event_dict(_: Any, __: str, event_dict: structlog.typing.EventDict) -> structlog.typing.EventDict:
+def _mask_event_dict(
+    _: Any, __: str, event_dict: structlog.typing.EventDict
+) -> structlog.typing.EventDict:
     pii_fields: dict[str, Literal["phone", "email", "name"]] = {
         "phone": "phone",
         "email": "email",

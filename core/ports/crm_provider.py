@@ -8,10 +8,11 @@ class CRMProvider(Protocol):
     async def upsert_lead(self, lead: Lead) -> str:
         """Create or update a lead in the external CRM and return its external identifier."""
 
-    async def change_stage(
-        self, lead_id: str, new_stage: str, reason: str | None = None
-    ) -> None:
-        """Move a lead to a new canonical business stage, preserving the optional business reason."""
+    async def change_stage(self, lead_id: str, new_stage: str, reason: str | None = None) -> None:
+        """
+        Move a lead to a new canonical business stage,
+        preserving the optional business reason.
+        """
 
     async def add_note(self, lead_id: str, note: str, author: str) -> None:
         """Attach an auditable note to a lead under the provided author identity."""

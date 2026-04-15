@@ -12,7 +12,10 @@ class KnowledgeProvider(Protocol):
     async def query(
         self, question: str, top_k: int, filters: dict[str, object] | None
     ) -> list[KnowledgeChunk]:
-        """Return the most relevant knowledge chunks for a question under optional canonical filters."""
+        """
+        Return the most relevant knowledge chunks for a question
+        under optional canonical filters.
+        """
 
     async def delete_source(self, source_id: str) -> None:
         """Remove all indexed material associated with a canonical source identifier."""
