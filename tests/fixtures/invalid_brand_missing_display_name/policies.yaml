@@ -1,0 +1,11 @@
+working_hours:
+  monday:
+    start: "08:30"
+    end: "18:00"
+max_messages_per_day_per_lead: 4
+opt_out_keywords:
+  - baja
+handoff_keywords:
+  - asesor
+forbidden_terms:
+  - garantia total

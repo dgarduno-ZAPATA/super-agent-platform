@@ -1,0 +1,9 @@
+products:
+  - sku: FL-CASCADIA-2020
+    name: Freightliner Cascadia 2020
+    description: Tractocamion seminuevo con mantenimiento validado y opcion de financiamiento.
+    metadata:
+      category: tractocamion
+      brand: Freightliner
+      model_year: 2020
+      fuel: diesel

@@ -1,0 +1,32 @@
+working_hours:
+  monday:
+    start: "08:30"
+    end: "18:00"
+  tuesday:
+    start: "08:30"
+    end: "18:00"
+  wednesday:
+    start: "08:30"
+    end: "18:00"
+  thursday:
+    start: "08:30"
+    end: "18:00"
+  friday:
+    start: "08:30"
+    end: "18:00"
+  saturday:
+    start: "09:00"
+    end: "14:00"
+max_messages_per_day_per_lead: 4
+opt_out_keywords:
+  - baja
+  - no me contacten
+  - stop
+handoff_keywords:
+  - asesor
+  - humano
+  - ejecutivo
+forbidden_terms:
+  - garantia total
+  - aprobado inmediato
+  - sin revision

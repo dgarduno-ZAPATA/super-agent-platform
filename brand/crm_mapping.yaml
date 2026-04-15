@@ -1,0 +1,16 @@
+provider_type: monday
+stage_map:
+  new_lead: Nuevo lead
+  contacted: Contactado
+  qualified: Perfilado
+  quoted: Cotizado
+  nurture: Seguimiento
+  handoff: Transferido a asesor
+  won: Venta cerrada
+  lost: Cerrado perdido
+  do_not_contact: Baja
+field_map:
+  lead_name: nombre_contacto
+  phone: telefono_principal
+  source: fuente_lead
+  vehicle_interest: unidad_interes

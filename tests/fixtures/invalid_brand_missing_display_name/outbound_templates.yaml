@@ -1,0 +1,10 @@
+campaigns:
+  - key: reactivation_used_trucks
+    template_text: "Hola, soy Estefania de SelecTrucks Zapata. Vi que antes te intereso uno de nuestros camiones usados. Quiero compartirte opciones disponibles esta semana y planes de financiamiento. Te puedo ayudar?"
+    window_start: "09:00"
+    window_end: "18:30"
+    cadence_hours: 24
+    audience_filter:
+      source: crm
+      interest: camiones_usados
+      last_stage: nurture

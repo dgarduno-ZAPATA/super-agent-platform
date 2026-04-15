@@ -1,0 +1,5 @@
+provider_type: monday
+stage_map:
+  new_lead: Nuevo lead
+field_map:
+  lead_name: nombre_contacto

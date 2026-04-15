@@ -1,0 +1,45 @@
+states:
+  - name: new_lead
+    description: Lead recien ingresado desde campana o WhatsApp.
+    allowed_transitions:
+      - contacted
+      - do_not_contact
+  - name: contacted
+    description: Lead contactado y en conversacion activa.
+    allowed_transitions:
+      - qualified
+      - nurture
+      - handoff
+      - do_not_contact
+  - name: qualified
+    description: Lead con interes confirmado en una unidad o linea de credito.
+    allowed_transitions:
+      - quoted
+      - handoff
+      - do_not_contact
+  - name: quoted
+    description: Lead con propuesta comercial enviada.
+    allowed_transitions:
+      - won
+      - lost
+      - nurture
+  - name: nurture
+    description: Lead pausado temporalmente para seguimiento posterior.
+    allowed_transitions:
+      - contacted
+      - do_not_contact
+  - name: handoff
+    description: Conversacion transferida a asesor humano.
+    allowed_transitions:
+      - qualified
+      - won
+      - lost
+  - name: won
+    description: Venta concretada.
+    allowed_transitions: []
+  - name: lost
+    description: Oportunidad cerrada sin venta.
+    allowed_transitions: []
+  - name: do_not_contact
+    description: Lead silenciado por solicitud expresa o politica interna.
+    allowed_transitions: []

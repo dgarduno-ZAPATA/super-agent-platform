@@ -1,0 +1,25 @@
+products:
+  - sku: FL-CASCADIA-2020
+    name: Freightliner Cascadia 2020
+    description: Tractocamion seminuevo con mantenimiento validado y opcion de financiamiento.
+    metadata:
+      category: tractocamion
+      brand: Freightliner
+      model_year: 2020
+      fuel: diesel
+  - sku: INT-LT-2019
+    name: International LT 2019
+    description: Unidad usada para larga distancia con historial de servicio disponible.
+    metadata:
+      category: tractocamion
+      brand: International
+      model_year: 2019
+      fuel: diesel
+  - sku: M2-BOX-2018
+    name: Freightliner M2 Caja Seca 2018
+    description: Camion mediano usado para reparto con caja seca y opciones de renovacion.
+    metadata:
+      category: reparto
+      brand: Freightliner
+      model_year: 2018
+      fuel: diesel

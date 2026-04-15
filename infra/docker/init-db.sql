@@ -1,0 +1,25 @@
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+DO
+$$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_user') THEN
+        CREATE ROLE app_user
+            LOGIN
+            PASSWORD 'change_me'
+            NOSUPERUSER
+            NOCREATEDB
+            NOCREATEROLE
+            NOINHERIT
+            NOREPLICATION;
+    END IF;
+END
+$$;
+
+GRANT CONNECT ON DATABASE super_agent_platform TO app_user;
+GRANT USAGE, CREATE ON SCHEMA public TO app_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO app_user;
