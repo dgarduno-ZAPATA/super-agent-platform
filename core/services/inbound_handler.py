@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
@@ -24,6 +24,7 @@ from core.ports.repositories import (
     SilencedUserRepository,
 )
 from core.ports.transcription_provider import TranscriptionProvider
+from core.services.responder import EchoResponder
 
 logger = structlog.get_logger("super_agent_platform.core.services.inbound_handler")
 
@@ -47,6 +48,7 @@ class InboundMessageHandler:
         session_repository: SessionRepository,
         silenced_user_repository: SilencedUserRepository,
         transcription_provider: TranscriptionProvider,
+        responder: EchoResponder,
     ) -> None:
         self._messaging_provider = messaging_provider
         self._conversation_event_repository = conversation_event_repository
@@ -54,6 +56,7 @@ class InboundMessageHandler:
         self._session_repository = session_repository
         self._silenced_user_repository = silenced_user_repository
         self._transcription_provider = transcription_provider
+        self._responder = responder
 
     async def handle(self, raw_payload: dict[str, object]) -> InboundHandleResult:
         try:
@@ -75,16 +78,17 @@ class InboundMessageHandler:
                 event_type=inbound_event.event_type,
             )
 
-        conversation_id = self._build_conversation_id(inbound_event.from_phone)
-        event_payload = self._build_event_payload(inbound_event)
+        enriched_inbound_event = self._enrich_event_for_processing(inbound_event)
+        conversation_id = self._build_conversation_id(enriched_inbound_event.from_phone)
+        event_payload = self._build_event_payload(enriched_inbound_event)
         conversation_event = ConversationEvent(
             id=uuid4(),
             conversation_id=conversation_id,
             lead_id=None,
-            event_type=inbound_event.event_type,
+            event_type=enriched_inbound_event.event_type,
             payload=event_payload,
-            created_at=inbound_event.received_at,
-            message_id=inbound_event.message_id,
+            created_at=enriched_inbound_event.received_at,
+            message_id=enriched_inbound_event.message_id,
         )
 
         appended = await self._conversation_event_repository.append(conversation_event)
@@ -92,35 +96,44 @@ class InboundMessageHandler:
             logger.info(
                 "inbound_webhook_ignored_duplicate",
                 conversation_id=str(conversation_id),
-                message_id=inbound_event.message_id,
-                event_type=inbound_event.event_type,
-                message_kind=inbound_event.kind.value,
+                message_id=enriched_inbound_event.message_id,
+                event_type=enriched_inbound_event.event_type,
+                message_kind=enriched_inbound_event.kind.value,
             )
             return InboundHandleResult(
                 status="duplicate",
                 processed=False,
                 conversation_id=conversation_id,
-                event_type=inbound_event.event_type,
-                message_kind=inbound_event.kind,
+                event_type=enriched_inbound_event.event_type,
+                message_kind=enriched_inbound_event.kind,
             )
 
-        lead_profile = await self._get_or_create_lead_profile(inbound_event)
-        await self._get_or_create_session(lead_profile.id, inbound_event.received_at)
+        lead_profile = await self._get_or_create_lead_profile(enriched_inbound_event)
+        session, created = await self._get_or_create_session(
+            lead_profile.id, enriched_inbound_event.received_at
+        )
+
+        await self._responder.respond(enriched_inbound_event, session)
+        await self._update_session_after_response(
+            session=session,
+            inbound_event=enriched_inbound_event,
+            is_first_contact=created,
+        )
 
         logger.info(
             "inbound_webhook_processed",
             conversation_id=str(conversation_id),
             lead_id=str(lead_profile.id),
-            event_type=inbound_event.event_type,
-            message_kind=inbound_event.kind.value,
+            event_type=enriched_inbound_event.event_type,
+            message_kind=enriched_inbound_event.kind.value,
         )
         return InboundHandleResult(
             status="processed",
             processed=True,
             conversation_id=conversation_id,
             lead_id=lead_profile.id,
-            event_type=inbound_event.event_type,
-            message_kind=inbound_event.kind,
+            event_type=enriched_inbound_event.event_type,
+            message_kind=enriched_inbound_event.kind,
         )
 
     async def _get_or_create_lead_profile(self, inbound_event: InboundEvent) -> LeadProfile:
@@ -148,13 +161,15 @@ class InboundMessageHandler:
             )
         )
 
-    async def _get_or_create_session(self, lead_id: UUID, occurred_at: datetime) -> Session:
+    async def _get_or_create_session(
+        self, lead_id: UUID, occurred_at: datetime
+    ) -> tuple[Session, bool]:
         existing = await self._session_repository.get_by_lead_id(lead_id)
         if existing is not None:
-            return existing
+            return existing, False
 
         now = datetime.now(UTC)
-        return await self._session_repository.upsert(
+        created = await self._session_repository.upsert(
             Session(
                 id=uuid4(),
                 lead_id=lead_id,
@@ -164,6 +179,46 @@ class InboundMessageHandler:
                 updated_at=now,
                 last_event_at=occurred_at,
             )
+        )
+        return created, True
+
+    async def _update_session_after_response(
+        self,
+        session: Session,
+        inbound_event: InboundEvent,
+        is_first_contact: bool,
+    ) -> Session:
+        now = datetime.now(UTC)
+        new_context = dict(session.context)
+        new_context["last_inbound_message"] = {
+            "text": inbound_event.text,
+            "type": inbound_event.kind.value,
+            "timestamp": inbound_event.received_at.isoformat(),
+        }
+
+        updated_session = Session(
+            id=session.id,
+            lead_id=session.lead_id,
+            current_state="greeting" if is_first_contact else session.current_state,
+            context=new_context,
+            created_at=session.created_at,
+            updated_at=now,
+            last_event_at=inbound_event.received_at,
+        )
+        return await self._session_repository.upsert(updated_session)
+
+    def _enrich_event_for_processing(self, inbound_event: InboundEvent) -> InboundEvent:
+        if inbound_event.kind is not MessageKind.AUDIO:
+            return inbound_event
+
+        transcription_text = self._transcribe_audio(inbound_event)
+        metadata = dict(inbound_event.metadata)
+        metadata["transcription_text"] = transcription_text
+
+        return replace(
+            inbound_event,
+            text=transcription_text if inbound_event.text is None else inbound_event.text,
+            metadata=metadata,
         )
 
     def _build_event_payload(self, inbound_event: InboundEvent) -> dict[str, object]:
@@ -183,11 +238,9 @@ class InboundMessageHandler:
         if inbound_event.occurred_at is not None:
             payload["occurred_at"] = inbound_event.occurred_at.isoformat()
 
-        if inbound_event.kind is MessageKind.AUDIO:
-            transcription_text = self._transcribe_audio(inbound_event)
+        transcription_text = inbound_event.metadata.get("transcription_text")
+        if inbound_event.kind is MessageKind.AUDIO and isinstance(transcription_text, str):
             payload["transcription_text"] = transcription_text
-            if inbound_event.text is None:
-                payload["text"] = transcription_text
 
         return payload
 

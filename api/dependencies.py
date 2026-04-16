@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 
 from adapters.messaging.evolution.adapter import EvolutionMessagingAdapter
 from adapters.storage.repositories.event_repo import PostgresConversationEventRepository
@@ -8,6 +8,7 @@ from adapters.storage.repositories.lead_repo import PostgresLeadProfileRepositor
 from adapters.storage.repositories.session_repo import PostgresSessionRepository
 from adapters.storage.repositories.silenced_repo import PostgresSilencedUserRepository
 from adapters.transcription.whisper_stub import WhisperStubTranscriptionProvider
+from core.brand.schema import Brand
 from core.config import get_settings
 from core.ports.messaging_provider import MessagingProvider
 from core.ports.repositories import (
@@ -18,6 +19,7 @@ from core.ports.repositories import (
 )
 from core.ports.transcription_provider import TranscriptionProvider
 from core.services.inbound_handler import InboundMessageHandler
+from core.services.responder import EchoResponder
 
 
 def get_messaging_provider() -> MessagingProvider:
@@ -44,6 +46,17 @@ def get_silenced_user_repository() -> SilencedUserRepository:
     return PostgresSilencedUserRepository()
 
 
+def get_brand(request: Request) -> Brand:
+    return request.app.state.brand
+
+
+def get_echo_responder(
+    messaging_provider: Annotated[MessagingProvider, Depends(get_messaging_provider)],
+    brand: Annotated[Brand, Depends(get_brand)],
+) -> EchoResponder:
+    return EchoResponder(messaging_provider=messaging_provider, brand=brand)
+
+
 def get_inbound_message_handler(
     messaging_provider: Annotated[MessagingProvider, Depends(get_messaging_provider)],
     conversation_event_repository: Annotated[
@@ -55,6 +68,7 @@ def get_inbound_message_handler(
         SilencedUserRepository, Depends(get_silenced_user_repository)
     ],
     transcription_provider: Annotated[TranscriptionProvider, Depends(get_transcription_provider)],
+    responder: Annotated[EchoResponder, Depends(get_echo_responder)],
 ) -> InboundMessageHandler:
     return InboundMessageHandler(
         messaging_provider=messaging_provider,
@@ -63,4 +77,5 @@ def get_inbound_message_handler(
         session_repository=session_repository,
         silenced_user_repository=silenced_user_repository,
         transcription_provider=transcription_provider,
+        responder=responder,
     )

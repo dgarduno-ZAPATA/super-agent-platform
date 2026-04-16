@@ -142,6 +142,14 @@ class FakeTranscriptionProvider:
         return self.transcription_text
 
 
+class FakeResponder:
+    def __init__(self) -> None:
+        self.calls: list[tuple[InboundEvent, Session]] = []
+
+    async def respond(self, event: InboundEvent, session: Session) -> None:
+        self.calls.append((event, session))
+
+
 def _build_event(kind: MessageKind = MessageKind.TEXT) -> InboundEvent:
     return InboundEvent(
         message_id="wamid-001",
@@ -166,6 +174,7 @@ def _build_handler(
     session_repo: FakeSessionRepository,
     silenced_repo: FakeSilencedUserRepository,
     transcription_provider: FakeTranscriptionProvider,
+    responder: FakeResponder,
 ) -> InboundMessageHandler:
     return InboundMessageHandler(
         messaging_provider=messaging_provider,
@@ -174,6 +183,7 @@ def _build_handler(
         session_repository=session_repo,
         silenced_user_repository=silenced_repo,
         transcription_provider=transcription_provider,
+        responder=responder,
     )
 
 
@@ -184,6 +194,7 @@ async def test_text_message_persists_event_and_creates_lead_and_session() -> Non
     session_repo = FakeSessionRepository()
     silenced_repo = FakeSilencedUserRepository()
     transcription_provider = FakeTranscriptionProvider()
+    responder = FakeResponder()
     handler = _build_handler(
         messaging_provider=FakeMessagingProvider(event=_build_event(MessageKind.TEXT)),
         event_repo=event_repo,
@@ -191,6 +202,7 @@ async def test_text_message_persists_event_and_creates_lead_and_session() -> Non
         session_repo=session_repo,
         silenced_repo=silenced_repo,
         transcription_provider=transcription_provider,
+        responder=responder,
     )
 
     result = await handler.handle({"any": "payload"})
@@ -199,6 +211,10 @@ async def test_text_message_persists_event_and_creates_lead_and_session() -> Non
     assert len(event_repo.events) == 1
     assert lead_repo.by_phone["5214421234567"].phone == "5214421234567"
     assert len(session_repo.by_lead_id) == 1
+    persisted_session = next(iter(session_repo.by_lead_id.values()))
+    assert persisted_session.current_state == "greeting"
+    assert persisted_session.context["last_inbound_message"]["type"] == "text"
+    assert len(responder.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -208,6 +224,7 @@ async def test_duplicate_message_is_ignored_by_dedup() -> None:
     session_repo = FakeSessionRepository()
     silenced_repo = FakeSilencedUserRepository()
     transcription_provider = FakeTranscriptionProvider()
+    responder = FakeResponder()
     handler = _build_handler(
         messaging_provider=FakeMessagingProvider(event=_build_event(MessageKind.TEXT)),
         event_repo=event_repo,
@@ -215,6 +232,7 @@ async def test_duplicate_message_is_ignored_by_dedup() -> None:
         session_repo=session_repo,
         silenced_repo=silenced_repo,
         transcription_provider=transcription_provider,
+        responder=responder,
     )
 
     first = await handler.handle({"payload": 1})
@@ -225,7 +243,8 @@ async def test_duplicate_message_is_ignored_by_dedup() -> None:
     assert second.status == "duplicate"
     assert len(event_repo.events) == 1
     assert lead_repo.upsert_calls == 1
-    assert session_repo.upsert_calls == 1
+    assert session_repo.upsert_calls == 2
+    assert len(responder.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -235,6 +254,7 @@ async def test_silenced_phone_is_ignored_without_processing() -> None:
     session_repo = FakeSessionRepository()
     silenced_repo = FakeSilencedUserRepository(silenced_phones={"5214421234567"})
     transcription_provider = FakeTranscriptionProvider()
+    responder = FakeResponder()
     handler = _build_handler(
         messaging_provider=FakeMessagingProvider(event=_build_event(MessageKind.TEXT)),
         event_repo=event_repo,
@@ -242,6 +262,7 @@ async def test_silenced_phone_is_ignored_without_processing() -> None:
         session_repo=session_repo,
         silenced_repo=silenced_repo,
         transcription_provider=transcription_provider,
+        responder=responder,
     )
 
     result = await handler.handle({"any": "payload"})
@@ -251,6 +272,7 @@ async def test_silenced_phone_is_ignored_without_processing() -> None:
     assert len(event_repo.events) == 0
     assert lead_repo.upsert_calls == 0
     assert session_repo.upsert_calls == 0
+    assert len(responder.calls) == 0
 
 
 @pytest.mark.asyncio
@@ -260,6 +282,7 @@ async def test_group_payload_is_ignored_without_crashing() -> None:
     session_repo = FakeSessionRepository()
     silenced_repo = FakeSilencedUserRepository()
     transcription_provider = FakeTranscriptionProvider()
+    responder = FakeResponder()
     handler = _build_handler(
         messaging_provider=FakeMessagingProvider(
             error=InvalidInboundPayloadError("invalid inbound sender: group")
@@ -269,6 +292,7 @@ async def test_group_payload_is_ignored_without_crashing() -> None:
         session_repo=session_repo,
         silenced_repo=silenced_repo,
         transcription_provider=transcription_provider,
+        responder=responder,
     )
 
     result = await handler.handle({"any": "payload"})
@@ -278,6 +302,7 @@ async def test_group_payload_is_ignored_without_crashing() -> None:
     assert len(event_repo.events) == 0
     assert lead_repo.upsert_calls == 0
     assert session_repo.upsert_calls == 0
+    assert len(responder.calls) == 0
 
 
 @pytest.mark.asyncio
@@ -287,6 +312,7 @@ async def test_audio_message_calls_transcription_provider() -> None:
     session_repo = FakeSessionRepository()
     silenced_repo = FakeSilencedUserRepository()
     transcription_provider = FakeTranscriptionProvider("Texto transcrito")
+    responder = FakeResponder()
     handler = _build_handler(
         messaging_provider=FakeMessagingProvider(event=_build_event(MessageKind.AUDIO)),
         event_repo=event_repo,
@@ -294,6 +320,7 @@ async def test_audio_message_calls_transcription_provider() -> None:
         session_repo=session_repo,
         silenced_repo=silenced_repo,
         transcription_provider=transcription_provider,
+        responder=responder,
     )
 
     result = await handler.handle({"audio": True})
@@ -301,3 +328,4 @@ async def test_audio_message_calls_transcription_provider() -> None:
     assert result.processed is True
     assert len(transcription_provider.calls) == 1
     assert event_repo.events[0].payload["transcription_text"] == "Texto transcrito"
+    assert len(responder.calls) == 1
