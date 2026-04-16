@@ -139,6 +139,4 @@ Este proyecto nace de lecciones reales de Tono-Bot y Followup-Bot. No repitas es
 
 ## Sprint activo
 
-**Sprint 1 — Cimientos y contratos.** Objetivo: dejar el esqueleto hexagonal, los contratos de puertos, despliegue local con Docker, y el schema inicial de Postgres funcionando. Sin cimientos sólidos, el sprint 4 se rompe.
-
-Criterio de salida del sprint: `curl http://localhost:8000/health` responde 200, `docker-compose up` levanta Postgres con pgvector y la app, y `alembic upgrade head` aplica el schema inicial.
+**Sprint 2 — Prompt 2.3 (Webhook inbound Evolution).** Objetivo: exponer el endpoint `/webhooks/whatsapp` para recibir eventos entrantes, aplicar dedup, persistir en repos async y registrar logs estructurados, sin enviar respuesta al usuario.

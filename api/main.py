@@ -5,6 +5,7 @@ import structlog
 from fastapi import FastAPI
 
 from api.middleware.correlation import CorrelationMiddleware
+from api.routers.webhook import router as webhook_router
 from core.brand.loader import BrandValidationError, load_brand
 from core.config import get_settings
 from core.observability.logging import setup_logging
@@ -44,6 +45,7 @@ def create_app() -> FastAPI:
         logger.info("app_stopped", service=SERVICE_NAME)
 
     app.router.lifespan_context = lifespan
+    app.include_router(webhook_router)
 
     @app.get("/health")
     async def healthcheck() -> dict[str, str]:
