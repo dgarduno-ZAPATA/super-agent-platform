@@ -219,10 +219,12 @@ class FakeOrchestrator:
         self.intent = intent
         self.fsm_event = fsm_event
         self.metadata = metadata or {}
+        self.calls = 0
 
     async def classify(self, event: InboundEvent, session: Session) -> MessageClassification:
         del event
         del session
+        self.calls += 1
         return MessageClassification(
             intent=self.intent,  # type: ignore[arg-type]
             confidence=1.0 if self.intent in {"opt_out", "handoff_request", "unsupported"} else 0.8,
@@ -545,4 +547,60 @@ async def test_handoff_request_sends_handoff_ack_and_skips_echo() -> None:
     assert result.processed is True
     assert len(provider.sent_messages) == 1
     assert provider.sent_messages[0]["text"] == "Un asesor te contactara pronto."
+    assert len(conversation_agent.calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_handoff_active_session_persists_event_and_skips_bot_processing() -> None:
+    event_repo = FakeConversationEventRepository()
+    lead_repo = FakeLeadProfileRepository()
+    crm_outbox_repo = FakeCRMOutboxRepository()
+    session_repo = FakeSessionRepository()
+    silenced_repo = FakeSilencedUserRepository()
+    transcription_provider = FakeTranscriptionProvider()
+    conversation_agent = FakeConversationAgent()
+    orchestrator = FakeOrchestrator()
+    provider = FakeMessagingProvider(event=_build_event(MessageKind.TEXT))
+
+    now = datetime.now(UTC)
+    lead = LeadProfile(
+        id=UUID("00000000-0000-0000-0000-000000000123"),
+        external_crm_id=None,
+        phone="5214421234567",
+        name="Cliente Demo",
+        source="whatsapp_inbound",
+        attributes={},
+        created_at=now,
+        updated_at=now,
+    )
+    lead_repo.by_phone[lead.phone] = lead
+    session_repo.by_lead_id[lead.id] = Session(
+        id=UUID("00000000-0000-0000-0000-000000000456"),
+        lead_id=lead.id,
+        current_state="handoff_active",
+        context={"owner": "human_agent"},
+        created_at=now,
+        updated_at=now,
+        last_event_at=now,
+    )
+
+    handler = _build_handler(
+        messaging_provider=provider,
+        event_repo=event_repo,
+        lead_repo=lead_repo,
+        crm_outbox_repo=crm_outbox_repo,
+        session_repo=session_repo,
+        silenced_repo=silenced_repo,
+        transcription_provider=transcription_provider,
+        conversation_agent=conversation_agent,
+        orchestrator=orchestrator,
+    )
+
+    result = await handler.handle({"text": "sigo aqui"})
+
+    assert result.processed is True
+    assert result.status == "handoff_active"
+    assert len(event_repo.events) == 1
+    assert len(crm_outbox_repo.enqueued) == 0
+    assert orchestrator.calls == 0
     assert len(conversation_agent.calls) == 0

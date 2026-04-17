@@ -137,6 +137,23 @@ class InboundMessageHandler:
         session = await self._get_or_create_session(
             lead_profile.id, enriched_inbound_event.received_at
         )
+        if session.current_state == "handoff_active":
+            logger.info(
+                "inbound_webhook_handoff_active_bot_silenced",
+                conversation_id=str(conversation_id),
+                lead_id=str(lead_profile.id),
+                message_id=enriched_inbound_event.message_id,
+                event_type=enriched_inbound_event.event_type,
+            )
+            return InboundHandleResult(
+                status="handoff_active",
+                processed=True,
+                conversation_id=conversation_id,
+                lead_id=lead_profile.id,
+                event_type=enriched_inbound_event.event_type,
+                message_kind=enriched_inbound_event.kind,
+            )
+
         classification = await self._orchestrator.classify(enriched_inbound_event, session)
         resolved_state = self._resolve_session_state(session.current_state)
         fsm_context = self._build_fsm_context(

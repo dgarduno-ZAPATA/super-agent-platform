@@ -29,6 +29,7 @@ from core.ports.repositories import (
 )
 from core.ports.transcription_provider import TranscriptionProvider
 from core.services.conversation_agent import ConversationAgent
+from core.services.handoff_service import HandoffService
 from core.services.inbound_handler import InboundMessageHandler
 from core.services.orchestrator import OrchestratorAgent
 from core.services.skills import SkillRegistry
@@ -79,6 +80,18 @@ def get_lead_profile_repository() -> LeadProfileRepository:
 
 def get_session_repository() -> SessionRepository:
     return PostgresSessionRepository()
+
+
+def get_handoff_service(
+    session_repository: Annotated[SessionRepository, Depends(get_session_repository)],
+    conversation_event_repository: Annotated[
+        ConversationEventRepository, Depends(get_conversation_event_repository)
+    ],
+) -> HandoffService:
+    return HandoffService(
+        session_repository=session_repository,
+        conversation_event_repository=conversation_event_repository,
+    )
 
 
 def get_silenced_user_repository() -> SilencedUserRepository:
