@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 class StrictEvolutionModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
+    model_config = ConfigDict(extra="ignore", strict=True)
 
 
 class EvolutionMessageKey(StrictEvolutionModel):
@@ -71,6 +71,8 @@ class EvolutionMessageContent(StrictEvolutionModel):
 
 
 class EvolutionMessagePayload(StrictEvolutionModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+
     key: EvolutionMessageKey
     messageType: str
     message: EvolutionMessageContent
@@ -81,6 +83,8 @@ class EvolutionMessagePayload(StrictEvolutionModel):
 
 
 class EvolutionWebhookEnvelope(StrictEvolutionModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+
     event: str
     instance: str
     data: EvolutionMessagePayload | dict[str, Any]
