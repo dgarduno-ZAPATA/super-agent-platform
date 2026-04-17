@@ -5,6 +5,7 @@ from typing import Protocol
 from uuid import UUID
 
 from core.domain.conversation_event import ConversationEvent
+from core.domain.crm_outbox import OutboxItem
 from core.domain.lead import LeadProfile
 from core.domain.outbound_queue import OutboundQueueItem
 from core.domain.session import Session
@@ -68,6 +69,27 @@ class OutboundQueueRepository(Protocol):
 
     async def mark_as_failed(self, item_id: UUID, error: str) -> None:
         """Mark an outbound queue item as failed with an error reason."""
+
+
+class CRMOutboxRepository(Protocol):
+    async def enqueue_operation(
+        self, aggregate_id: str, operation: str, payload: dict[str, object]
+    ) -> UUID:
+        """Insert a CRM operation into outbox as pending."""
+
+    async def get_pending_batch(self, limit: int = 10) -> list[OutboxItem]:
+        """Fetch pending CRM operations due for execution with SKIP LOCKED semantics."""
+
+    async def mark_as_done(self, item_id: UUID) -> None:
+        """Mark outbox operation as done."""
+
+    async def mark_as_failed_with_retry(
+        self, item_id: UUID, error: str, next_retry_at: datetime, attempt: int
+    ) -> None:
+        """Mark outbox operation as pending with retry metadata."""
+
+    async def move_to_dlq(self, item_id: UUID, error: str) -> None:
+        """Move operation to dead-letter queue when retries are exhausted."""
 
 
 class SilencedUserRepository(Protocol):

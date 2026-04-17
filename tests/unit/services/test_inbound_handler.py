@@ -134,6 +134,47 @@ class FakeSessionRepository:
         raise NotImplementedError
 
 
+class FakeCRMOutboxRepository:
+    def __init__(self) -> None:
+        self.enqueued: list[dict[str, object]] = []
+
+    async def enqueue_operation(
+        self, aggregate_id: str, operation: str, payload: dict[str, object]
+    ) -> UUID:
+        item_id = UUID("00000000-0000-0000-0000-000000000001")
+        self.enqueued.append(
+            {
+                "id": item_id,
+                "aggregate_id": aggregate_id,
+                "operation": operation,
+                "payload": payload,
+            }
+        )
+        return item_id
+
+    async def get_pending_batch(self, limit: int = 10):
+        del limit
+        raise NotImplementedError
+
+    async def mark_as_done(self, item_id: UUID) -> None:
+        del item_id
+        raise NotImplementedError
+
+    async def mark_as_failed_with_retry(
+        self, item_id: UUID, error: str, next_retry_at: datetime, attempt: int
+    ) -> None:
+        del item_id
+        del error
+        del next_retry_at
+        del attempt
+        raise NotImplementedError
+
+    async def move_to_dlq(self, item_id: UUID, error: str) -> None:
+        del item_id
+        del error
+        raise NotImplementedError
+
+
 class FakeSilencedUserRepository:
     def __init__(self, silenced_phones: set[str] | None = None) -> None:
         self.silenced_phones = silenced_phones or set()
@@ -211,6 +252,7 @@ def _build_handler(
     messaging_provider: MessagingProvider,
     event_repo: FakeConversationEventRepository,
     lead_repo: FakeLeadProfileRepository,
+    crm_outbox_repo: FakeCRMOutboxRepository,
     session_repo: FakeSessionRepository,
     silenced_repo: FakeSilencedUserRepository,
     transcription_provider: FakeTranscriptionProvider,
@@ -272,6 +314,7 @@ def _build_handler(
         messaging_provider=messaging_provider,
         conversation_event_repository=event_repo,
         lead_profile_repository=lead_repo,
+        crm_outbox_repository=crm_outbox_repo,
         session_repository=session_repo,
         silenced_user_repository=silenced_repo,
         transcription_provider=transcription_provider,
@@ -285,6 +328,7 @@ def _build_handler(
 async def test_text_message_persists_event_and_creates_lead_and_session() -> None:
     event_repo = FakeConversationEventRepository()
     lead_repo = FakeLeadProfileRepository()
+    crm_outbox_repo = FakeCRMOutboxRepository()
     session_repo = FakeSessionRepository()
     silenced_repo = FakeSilencedUserRepository()
     transcription_provider = FakeTranscriptionProvider()
@@ -293,6 +337,7 @@ async def test_text_message_persists_event_and_creates_lead_and_session() -> Non
         messaging_provider=FakeMessagingProvider(event=_build_event(MessageKind.TEXT)),
         event_repo=event_repo,
         lead_repo=lead_repo,
+        crm_outbox_repo=crm_outbox_repo,
         session_repo=session_repo,
         silenced_repo=silenced_repo,
         transcription_provider=transcription_provider,
@@ -309,12 +354,15 @@ async def test_text_message_persists_event_and_creates_lead_and_session() -> Non
     assert persisted_session.current_state == "greeting"
     assert persisted_session.context["last_inbound_message"]["type"] == "text"
     assert len(conversation_agent.calls) == 1
+    assert len(crm_outbox_repo.enqueued) == 1
+    assert crm_outbox_repo.enqueued[0]["operation"] == "upsert_lead"
 
 
 @pytest.mark.asyncio
 async def test_duplicate_message_is_ignored_by_dedup() -> None:
     event_repo = FakeConversationEventRepository()
     lead_repo = FakeLeadProfileRepository()
+    crm_outbox_repo = FakeCRMOutboxRepository()
     session_repo = FakeSessionRepository()
     silenced_repo = FakeSilencedUserRepository()
     transcription_provider = FakeTranscriptionProvider()
@@ -323,6 +371,7 @@ async def test_duplicate_message_is_ignored_by_dedup() -> None:
         messaging_provider=FakeMessagingProvider(event=_build_event(MessageKind.TEXT)),
         event_repo=event_repo,
         lead_repo=lead_repo,
+        crm_outbox_repo=crm_outbox_repo,
         session_repo=session_repo,
         silenced_repo=silenced_repo,
         transcription_provider=transcription_provider,
@@ -345,6 +394,7 @@ async def test_duplicate_message_is_ignored_by_dedup() -> None:
 async def test_silenced_phone_is_ignored_without_processing() -> None:
     event_repo = FakeConversationEventRepository()
     lead_repo = FakeLeadProfileRepository()
+    crm_outbox_repo = FakeCRMOutboxRepository()
     session_repo = FakeSessionRepository()
     silenced_repo = FakeSilencedUserRepository(silenced_phones={"5214421234567"})
     transcription_provider = FakeTranscriptionProvider()
@@ -353,6 +403,7 @@ async def test_silenced_phone_is_ignored_without_processing() -> None:
         messaging_provider=FakeMessagingProvider(event=_build_event(MessageKind.TEXT)),
         event_repo=event_repo,
         lead_repo=lead_repo,
+        crm_outbox_repo=crm_outbox_repo,
         session_repo=session_repo,
         silenced_repo=silenced_repo,
         transcription_provider=transcription_provider,
@@ -373,6 +424,7 @@ async def test_silenced_phone_is_ignored_without_processing() -> None:
 async def test_group_payload_is_ignored_without_crashing() -> None:
     event_repo = FakeConversationEventRepository()
     lead_repo = FakeLeadProfileRepository()
+    crm_outbox_repo = FakeCRMOutboxRepository()
     session_repo = FakeSessionRepository()
     silenced_repo = FakeSilencedUserRepository()
     transcription_provider = FakeTranscriptionProvider()
@@ -383,6 +435,7 @@ async def test_group_payload_is_ignored_without_crashing() -> None:
         ),
         event_repo=event_repo,
         lead_repo=lead_repo,
+        crm_outbox_repo=crm_outbox_repo,
         session_repo=session_repo,
         silenced_repo=silenced_repo,
         transcription_provider=transcription_provider,
@@ -403,6 +456,7 @@ async def test_group_payload_is_ignored_without_crashing() -> None:
 async def test_audio_message_calls_transcription_provider() -> None:
     event_repo = FakeConversationEventRepository()
     lead_repo = FakeLeadProfileRepository()
+    crm_outbox_repo = FakeCRMOutboxRepository()
     session_repo = FakeSessionRepository()
     silenced_repo = FakeSilencedUserRepository()
     transcription_provider = FakeTranscriptionProvider("Texto transcrito")
@@ -411,6 +465,7 @@ async def test_audio_message_calls_transcription_provider() -> None:
         messaging_provider=FakeMessagingProvider(event=_build_event(MessageKind.AUDIO)),
         event_repo=event_repo,
         lead_repo=lead_repo,
+        crm_outbox_repo=crm_outbox_repo,
         session_repo=session_repo,
         silenced_repo=silenced_repo,
         transcription_provider=transcription_provider,
@@ -429,6 +484,7 @@ async def test_audio_message_calls_transcription_provider() -> None:
 async def test_opt_out_message_silences_user_and_skips_responder() -> None:
     event_repo = FakeConversationEventRepository()
     lead_repo = FakeLeadProfileRepository()
+    crm_outbox_repo = FakeCRMOutboxRepository()
     session_repo = FakeSessionRepository()
     silenced_repo = FakeSilencedUserRepository()
     transcription_provider = FakeTranscriptionProvider()
@@ -438,6 +494,7 @@ async def test_opt_out_message_silences_user_and_skips_responder() -> None:
         messaging_provider=provider,
         event_repo=event_repo,
         lead_repo=lead_repo,
+        crm_outbox_repo=crm_outbox_repo,
         session_repo=session_repo,
         silenced_repo=silenced_repo,
         transcription_provider=transcription_provider,
@@ -461,6 +518,7 @@ async def test_opt_out_message_silences_user_and_skips_responder() -> None:
 async def test_handoff_request_sends_handoff_ack_and_skips_echo() -> None:
     event_repo = FakeConversationEventRepository()
     lead_repo = FakeLeadProfileRepository()
+    crm_outbox_repo = FakeCRMOutboxRepository()
     session_repo = FakeSessionRepository()
     silenced_repo = FakeSilencedUserRepository()
     transcription_provider = FakeTranscriptionProvider()
@@ -470,6 +528,7 @@ async def test_handoff_request_sends_handoff_ack_and_skips_echo() -> None:
         messaging_provider=provider,
         event_repo=event_repo,
         lead_repo=lead_repo,
+        crm_outbox_repo=crm_outbox_repo,
         session_repo=session_repo,
         silenced_repo=silenced_repo,
         transcription_provider=transcription_provider,

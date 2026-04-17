@@ -24,6 +24,7 @@ from core.fsm.schema import FSMConfig
 from core.ports.messaging_provider import MessagingProvider
 from core.ports.repositories import (
     ConversationEventRepository,
+    CRMOutboxRepository,
     LeadProfileRepository,
     SessionRepository,
     SilencedUserRepository,
@@ -51,6 +52,7 @@ class InboundMessageHandler:
         messaging_provider: MessagingProvider,
         conversation_event_repository: ConversationEventRepository,
         lead_profile_repository: LeadProfileRepository,
+        crm_outbox_repository: CRMOutboxRepository,
         session_repository: SessionRepository,
         silenced_user_repository: SilencedUserRepository,
         transcription_provider: TranscriptionProvider,
@@ -61,6 +63,7 @@ class InboundMessageHandler:
         self._messaging_provider = messaging_provider
         self._conversation_event_repository = conversation_event_repository
         self._lead_profile_repository = lead_profile_repository
+        self._crm_outbox_repository = crm_outbox_repository
         self._session_repository = session_repository
         self._silenced_user_repository = silenced_user_repository
         self._transcription_provider = transcription_provider
@@ -120,7 +123,17 @@ class InboundMessageHandler:
                 message_kind=enriched_inbound_event.kind,
             )
 
-        lead_profile = await self._get_or_create_lead_profile(enriched_inbound_event)
+        lead_profile, is_new_lead = await self._get_or_create_lead_profile(enriched_inbound_event)
+        if is_new_lead:
+            await self._crm_outbox_repository.enqueue_operation(
+                aggregate_id=str(lead_profile.id),
+                operation="upsert_lead",
+                payload={
+                    "phone": lead_profile.phone,
+                    "name": lead_profile.name,
+                    "source": lead_profile.source,
+                },
+            )
         session = await self._get_or_create_session(
             lead_profile.id, enriched_inbound_event.received_at
         )
@@ -205,16 +218,18 @@ class InboundMessageHandler:
             message_kind=enriched_inbound_event.kind,
         )
 
-    async def _get_or_create_lead_profile(self, inbound_event: InboundEvent) -> LeadProfile:
+    async def _get_or_create_lead_profile(
+        self, inbound_event: InboundEvent
+    ) -> tuple[LeadProfile, bool]:
         existing = await self._lead_profile_repository.get_by_phone(inbound_event.from_phone)
         if existing is not None:
-            return existing
+            return existing, False
 
         now = datetime.now(UTC)
         push_name = inbound_event.raw_metadata.get("push_name")
         lead_name = push_name if isinstance(push_name, str) and push_name else None
 
-        return await self._lead_profile_repository.upsert_by_phone(
+        created = await self._lead_profile_repository.upsert_by_phone(
             LeadProfile(
                 id=uuid4(),
                 external_crm_id=None,
@@ -229,6 +244,7 @@ class InboundMessageHandler:
                 updated_at=now,
             )
         )
+        return created, True
 
     async def _get_or_create_session(self, lead_id: UUID, occurred_at: datetime) -> Session:
         existing = await self._session_repository.get_by_lead_id(lead_id)

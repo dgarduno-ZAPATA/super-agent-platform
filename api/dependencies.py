@@ -2,10 +2,12 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 
+from adapters.crm.monday_adapter import MondayCRMAdapter
 from adapters.knowledge.pgvector_adapter import PgVectorKnowledgeAdapter
 from adapters.llm.vertex_adapter import VertexLLMAdapter
 from adapters.messaging.evolution.adapter import EvolutionMessagingAdapter
 from adapters.storage.db import get_session_factory
+from adapters.storage.repositories.crm_outbox_repo import PostgresCRMOutboxRepository
 from adapters.storage.repositories.event_repo import PostgresConversationEventRepository
 from adapters.storage.repositories.lead_repo import PostgresLeadProfileRepository
 from adapters.storage.repositories.session_repo import PostgresSessionRepository
@@ -14,11 +16,13 @@ from adapters.transcription.whisper_stub import WhisperStubTranscriptionProvider
 from core.brand.schema import Brand
 from core.config import get_settings
 from core.fsm.schema import FSMConfig
+from core.ports.crm_provider import CRMProvider
 from core.ports.knowledge_provider import KnowledgeProvider
 from core.ports.llm_provider import LLMProvider
 from core.ports.messaging_provider import MessagingProvider
 from core.ports.repositories import (
     ConversationEventRepository,
+    CRMOutboxRepository,
     LeadProfileRepository,
     SessionRepository,
     SilencedUserRepository,
@@ -32,6 +36,10 @@ from core.services.skills import SkillRegistry
 
 def get_messaging_provider() -> MessagingProvider:
     return EvolutionMessagingAdapter(get_settings())
+
+
+def get_crm_provider() -> CRMProvider:
+    return MondayCRMAdapter()
 
 
 def get_llm_provider() -> LLMProvider:
@@ -59,6 +67,10 @@ def get_transcription_provider() -> TranscriptionProvider:
 
 def get_conversation_event_repository() -> ConversationEventRepository:
     return PostgresConversationEventRepository()
+
+
+def get_crm_outbox_repository() -> CRMOutboxRepository:
+    return PostgresCRMOutboxRepository()
 
 
 def get_lead_profile_repository() -> LeadProfileRepository:
@@ -131,6 +143,7 @@ def get_inbound_message_handler(
         ConversationEventRepository, Depends(get_conversation_event_repository)
     ],
     lead_profile_repository: Annotated[LeadProfileRepository, Depends(get_lead_profile_repository)],
+    crm_outbox_repository: Annotated[CRMOutboxRepository, Depends(get_crm_outbox_repository)],
     session_repository: Annotated[SessionRepository, Depends(get_session_repository)],
     silenced_user_repository: Annotated[
         SilencedUserRepository, Depends(get_silenced_user_repository)
@@ -144,6 +157,7 @@ def get_inbound_message_handler(
         messaging_provider=messaging_provider,
         conversation_event_repository=conversation_event_repository,
         lead_profile_repository=lead_profile_repository,
+        crm_outbox_repository=crm_outbox_repository,
         session_repository=session_repository,
         silenced_user_repository=silenced_user_repository,
         transcription_provider=transcription_provider,

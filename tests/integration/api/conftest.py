@@ -67,6 +67,8 @@ def clean_webhook_tables(async_engine_for_test: AsyncEngine) -> None:
     async def _delete_rows() -> None:
         async with db_module.session_scope() as session:
             for table_name in [
+                "crm_dlq",
+                "crm_outbox",
                 "conversation_events",
                 "outbound_queue",
                 "sessions",
