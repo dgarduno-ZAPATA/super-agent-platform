@@ -31,6 +31,10 @@ class Settings(BaseSettings):
         default="gemini-2.5-flash-lite",
         alias="VERTEX_MODEL_NAME",
     )
+    vertex_embedding_model_name: str = Field(
+        default="text-embedding-004",
+        alias="VERTEX_EMBEDDING_MODEL_NAME",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env.local",

@@ -20,11 +20,13 @@ class VertexLLMAdapter(LLMProvider):
         project_id: str,
         region: str,
         model_name: str,
+        embedding_model_name: str = "text-embedding-004",
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self._project_id = project_id
         self._region = region
         self._model_name = model_name
+        self._embedding_model_name = embedding_model_name
         self._client = client or httpx.AsyncClient(timeout=30.0)
 
     async def complete(
@@ -93,8 +95,66 @@ class VertexLLMAdapter(LLMProvider):
         )
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
-        del texts
-        raise NotImplementedError("Vertex embeddings are not implemented yet")
+        if not texts:
+            return []
+
+        access_token = await self._resolve_access_token()
+        endpoint = (
+            f"https://{self._region}-aiplatform.googleapis.com/v1/projects/"
+            f"{self._project_id}/locations/{self._region}/publishers/google/models/"
+            f"{self._embedding_model_name}:predict"
+        )
+        payload: dict[str, object] = {
+            "instances": [{"content": text} for text in texts],
+            "parameters": {"outputDimensionality": 768},
+        }
+
+        response = await self._client.post(
+            endpoint,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+        response.raise_for_status()
+
+        body = response.json()
+        predictions = body.get("predictions")
+        if not isinstance(predictions, list):
+            raise RuntimeError("vertex embeddings response missing predictions")
+
+        vectors: list[list[float]] = []
+        for item in predictions:
+            if not isinstance(item, dict):
+                raise RuntimeError("vertex embeddings prediction format is invalid")
+
+            raw_values = None
+            embeddings = item.get("embeddings")
+            if isinstance(embeddings, dict):
+                values = embeddings.get("values")
+                if isinstance(values, list):
+                    raw_values = values
+            if raw_values is None:
+                values = item.get("values")
+                if isinstance(values, list):
+                    raw_values = values
+
+            if raw_values is None:
+                raise RuntimeError("vertex embeddings prediction missing vector values")
+
+            vector: list[float] = []
+            for value in raw_values:
+                if isinstance(value, int | float):
+                    vector.append(float(value))
+                else:
+                    raise RuntimeError("vertex embeddings prediction contains non-numeric value")
+            vectors.append(vector)
+
+        if len(vectors) != len(texts):
+            raise RuntimeError("vertex embeddings response count mismatch")
+
+        return vectors
 
     async def transcribe_audio(self, audio_bytes: bytes, mime_type: str) -> str:
         del audio_bytes

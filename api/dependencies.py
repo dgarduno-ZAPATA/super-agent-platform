@@ -2,8 +2,10 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 
+from adapters.knowledge.pgvector_adapter import PgVectorKnowledgeAdapter
 from adapters.llm.vertex_adapter import VertexLLMAdapter
 from adapters.messaging.evolution.adapter import EvolutionMessagingAdapter
+from adapters.storage.db import get_session_factory
 from adapters.storage.repositories.event_repo import PostgresConversationEventRepository
 from adapters.storage.repositories.lead_repo import PostgresLeadProfileRepository
 from adapters.storage.repositories.session_repo import PostgresSessionRepository
@@ -12,6 +14,7 @@ from adapters.transcription.whisper_stub import WhisperStubTranscriptionProvider
 from core.brand.schema import Brand
 from core.config import get_settings
 from core.fsm.schema import FSMConfig
+from core.ports.knowledge_provider import KnowledgeProvider
 from core.ports.llm_provider import LLMProvider
 from core.ports.messaging_provider import MessagingProvider
 from core.ports.repositories import (
@@ -36,6 +39,16 @@ def get_llm_provider() -> LLMProvider:
         project_id=settings.gcp_project_id,
         region=settings.gcp_region,
         model_name=settings.vertex_model_name,
+        embedding_model_name=settings.vertex_embedding_model_name,
+    )
+
+
+async def get_knowledge_provider(
+    llm_provider: Annotated[LLMProvider, Depends(get_llm_provider)],
+) -> KnowledgeProvider:
+    return PgVectorKnowledgeAdapter(
+        llm_provider=llm_provider,
+        session_factory=await get_session_factory(),
     )
 
 
