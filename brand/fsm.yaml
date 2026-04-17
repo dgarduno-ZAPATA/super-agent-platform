@@ -12,6 +12,23 @@ states:
         actions:
           - log_transition
           - update_crm_stage
+      - target: greeting
+        event: campaign_reply_received
+        guard: is_not_silenced
+        actions:
+          - log_transition
+          - update_crm_stage
+      - target: handoff_pending
+        event: handoff_requested
+        guard: always
+        actions:
+          - log_transition
+          - notify_agent
+      - target: cooldown
+        event: opt_out_detected
+        guard: opt_out_detected
+        actions:
+          - log_transition
 
   greeting:
     description: Primer contacto o reactivacion de la conversacion.
@@ -27,7 +44,7 @@ states:
         actions:
           - log_transition
       - target: handoff_pending
-        event: agent_command
+        event: handoff_requested
         guard: always
         actions:
           - log_transition
@@ -58,11 +75,16 @@ states:
         actions:
           - log_transition
       - target: handoff_pending
-        event: agent_command
+        event: handoff_requested
         guard: always
         actions:
           - log_transition
           - notify_agent
+      - target: greeting
+        event: campaign_reply_received
+        guard: is_not_silenced
+        actions:
+          - log_transition
       - target: cooldown
         event: opt_out_detected
         guard: opt_out_detected
@@ -89,11 +111,16 @@ states:
         actions:
           - log_transition
       - target: handoff_pending
-        event: agent_command
+        event: handoff_requested
         guard: always
         actions:
           - log_transition
           - notify_agent
+      - target: greeting
+        event: campaign_reply_received
+        guard: is_not_silenced
+        actions:
+          - log_transition
       - target: cooldown
         event: opt_out_detected
         guard: opt_out_detected
@@ -124,6 +151,17 @@ states:
         guard: always
         actions:
           - log_transition
+      - target: handoff_pending
+        event: handoff_requested
+        guard: always
+        actions:
+          - log_transition
+          - notify_agent
+      - target: cooldown
+        event: opt_out_detected
+        guard: opt_out_detected
+        actions:
+          - log_transition
 
   document_delivery:
     description: Entrega de fichas tecnicas, corridas o documentos.
@@ -145,11 +183,16 @@ states:
         actions:
           - log_transition
       - target: handoff_pending
-        event: agent_command
+        event: handoff_requested
         guard: always
         actions:
           - log_transition
           - notify_agent
+      - target: cooldown
+        event: opt_out_detected
+        guard: opt_out_detected
+        actions:
+          - log_transition
 
   objection_handling:
     description: Manejo de objeciones de precio, marca o condicion.
@@ -170,11 +213,16 @@ states:
         actions:
           - log_transition
       - target: handoff_pending
-        event: agent_command
+        event: handoff_requested
         guard: always
         actions:
           - log_transition
           - notify_agent
+      - target: cooldown
+        event: opt_out_detected
+        guard: opt_out_detected
+        actions:
+          - log_transition
 
   appointment_flow:
     description: Flujo para agendar cita, llamada o visita.
@@ -186,11 +234,16 @@ states:
     timeout_target: cooldown
     allowed_transitions:
       - target: handoff_pending
-        event: agent_command
+        event: handoff_requested
         guard: always
         actions:
           - log_transition
           - notify_agent
+      - target: cooldown
+        event: opt_out_detected
+        guard: opt_out_detected
+        actions:
+          - log_transition
       - target: closed
         event: user_message
         guard: has_phone_number
@@ -210,6 +263,11 @@ states:
       - target: handoff_active
         event: agent_command
         guard: always
+        actions:
+          - log_transition
+      - target: cooldown
+        event: opt_out_detected
+        guard: opt_out_detected
         actions:
           - log_transition
       - target: cooldown
@@ -236,6 +294,11 @@ states:
         guard: always
         actions:
           - log_transition
+      - target: cooldown
+        event: opt_out_detected
+        guard: opt_out_detected
+        actions:
+          - log_transition
 
   cooldown:
     description: Conversacion cerrada temporalmente en espera de reactivacion.
@@ -255,6 +318,11 @@ states:
         guard: always
         actions:
           - log_transition
+      - target: cooldown
+        event: opt_out_detected
+        guard: opt_out_detected
+        actions:
+          - log_transition
 
   closed:
     description: Conversacion finalizada.
@@ -268,3 +336,9 @@ states:
         guard: is_not_silenced
         actions:
           - log_transition
+      - target: handoff_pending
+        event: handoff_requested
+        guard: always
+        actions:
+          - log_transition
+          - notify_agent

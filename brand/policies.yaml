@@ -19,13 +19,20 @@ working_hours:
     end: "14:00"
 max_messages_per_day_per_lead: 4
 opt_out_keywords:
-  - baja
-  - no me contacten
   - stop
+  - baja
+  - no me escribas
+  - cancelar
+  - eliminar
+  - no me contacten
 handoff_keywords:
   - asesor
   - humano
+  - persona
+  - agente
+  - hablar con alguien
   - ejecutivo
+handoff_response_text: "Entendido, un asesor de {brand_name} te contactará pronto. Gracias por tu paciencia."
 forbidden_terms:
   - garantia total
   - aprobado inmediato

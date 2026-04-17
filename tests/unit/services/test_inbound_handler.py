@@ -5,6 +5,7 @@ from uuid import UUID
 
 import pytest
 
+from core.domain.classification import MessageClassification
 from core.domain.conversation_event import ConversationEvent
 from core.domain.lead import LeadProfile
 from core.domain.messaging import (
@@ -23,9 +24,23 @@ class FakeMessagingProvider(MessagingProvider):
     def __init__(self, event: InboundEvent | None = None, error: Exception | None = None) -> None:
         self._event = event
         self._error = error
+        self.sent_messages: list[dict[str, str]] = []
 
     async def send_text(self, to: str, text: str, correlation_id: str) -> MessageDeliveryReceipt:
-        raise NotImplementedError
+        self.sent_messages.append(
+            {
+                "to": to,
+                "text": text,
+                "correlation_id": correlation_id,
+            }
+        )
+        return MessageDeliveryReceipt(
+            message_id="out-001",
+            provider="fake",
+            status="accepted",
+            correlation_id=correlation_id,
+            metadata={},
+        )
 
     async def send_image(
         self, to: str, image_url: str, caption: str | None, correlation_id: str
@@ -122,12 +137,14 @@ class FakeSessionRepository:
 class FakeSilencedUserRepository:
     def __init__(self, silenced_phones: set[str] | None = None) -> None:
         self.silenced_phones = silenced_phones or set()
+        self.silence_calls: list[tuple[str, str, str]] = []
 
     async def is_silenced(self, phone: str) -> bool:
         return phone in self.silenced_phones
 
     async def silence(self, phone: str, reason: str, silenced_by: str) -> None:
         self.silenced_phones.add(phone)
+        self.silence_calls.append((phone, reason, silenced_by))
 
     async def unsilence(self, phone: str) -> None:
         self.silenced_phones.discard(phone)
@@ -143,12 +160,34 @@ class FakeTranscriptionProvider:
         return self.transcription_text
 
 
-class FakeResponder:
+class FakeConversationAgent:
     def __init__(self) -> None:
         self.calls: list[tuple[InboundEvent, Session]] = []
 
     async def respond(self, event: InboundEvent, session: Session) -> None:
         self.calls.append((event, session))
+
+
+class FakeOrchestrator:
+    def __init__(
+        self,
+        intent: str = "conversation",
+        fsm_event: str = "user_message",
+        metadata: dict[str, object] | None = None,
+    ) -> None:
+        self.intent = intent
+        self.fsm_event = fsm_event
+        self.metadata = metadata or {}
+
+    async def classify(self, event: InboundEvent, session: Session) -> MessageClassification:
+        del event
+        del session
+        return MessageClassification(
+            intent=self.intent,  # type: ignore[arg-type]
+            confidence=1.0 if self.intent in {"opt_out", "handoff_request", "unsupported"} else 0.8,
+            fsm_event=self.fsm_event,
+            metadata=self.metadata,
+        )
 
 
 def _build_event(kind: MessageKind = MessageKind.TEXT) -> InboundEvent:
@@ -175,7 +214,8 @@ def _build_handler(
     session_repo: FakeSessionRepository,
     silenced_repo: FakeSilencedUserRepository,
     transcription_provider: FakeTranscriptionProvider,
-    responder: FakeResponder,
+    conversation_agent: FakeConversationAgent,
+    orchestrator: FakeOrchestrator | None = None,
 ) -> InboundMessageHandler:
     fsm_config = FSMConfig.model_validate(
         {
@@ -189,13 +229,37 @@ def _build_handler(
                             "event": "user_message",
                             "guard": "always",
                             "actions": [],
-                        }
+                        },
+                        {
+                            "target": "cooldown",
+                            "event": "opt_out_detected",
+                            "guard": "always",
+                            "actions": [],
+                        },
+                        {
+                            "target": "handoff_pending",
+                            "event": "handoff_requested",
+                            "guard": "always",
+                            "actions": [],
+                        },
                     ],
                     "on_enter": [],
                     "on_exit": [],
                 },
                 "greeting": {
                     "description": "greeting",
+                    "allowed_transitions": [],
+                    "on_enter": [],
+                    "on_exit": [],
+                },
+                "handoff_pending": {
+                    "description": "handoff_pending",
+                    "allowed_transitions": [],
+                    "on_enter": [],
+                    "on_exit": [],
+                },
+                "cooldown": {
+                    "description": "cooldown",
                     "allowed_transitions": [],
                     "on_enter": [],
                     "on_exit": [],
@@ -211,7 +275,8 @@ def _build_handler(
         session_repository=session_repo,
         silenced_user_repository=silenced_repo,
         transcription_provider=transcription_provider,
-        responder=responder,
+        conversation_agent=conversation_agent,
+        orchestrator=orchestrator or FakeOrchestrator(),
         fsm_config=fsm_config,
     )
 
@@ -223,7 +288,7 @@ async def test_text_message_persists_event_and_creates_lead_and_session() -> Non
     session_repo = FakeSessionRepository()
     silenced_repo = FakeSilencedUserRepository()
     transcription_provider = FakeTranscriptionProvider()
-    responder = FakeResponder()
+    conversation_agent = FakeConversationAgent()
     handler = _build_handler(
         messaging_provider=FakeMessagingProvider(event=_build_event(MessageKind.TEXT)),
         event_repo=event_repo,
@@ -231,7 +296,7 @@ async def test_text_message_persists_event_and_creates_lead_and_session() -> Non
         session_repo=session_repo,
         silenced_repo=silenced_repo,
         transcription_provider=transcription_provider,
-        responder=responder,
+        conversation_agent=conversation_agent,
     )
 
     result = await handler.handle({"any": "payload"})
@@ -243,7 +308,7 @@ async def test_text_message_persists_event_and_creates_lead_and_session() -> Non
     persisted_session = next(iter(session_repo.by_lead_id.values()))
     assert persisted_session.current_state == "greeting"
     assert persisted_session.context["last_inbound_message"]["type"] == "text"
-    assert len(responder.calls) == 1
+    assert len(conversation_agent.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -253,7 +318,7 @@ async def test_duplicate_message_is_ignored_by_dedup() -> None:
     session_repo = FakeSessionRepository()
     silenced_repo = FakeSilencedUserRepository()
     transcription_provider = FakeTranscriptionProvider()
-    responder = FakeResponder()
+    conversation_agent = FakeConversationAgent()
     handler = _build_handler(
         messaging_provider=FakeMessagingProvider(event=_build_event(MessageKind.TEXT)),
         event_repo=event_repo,
@@ -261,7 +326,7 @@ async def test_duplicate_message_is_ignored_by_dedup() -> None:
         session_repo=session_repo,
         silenced_repo=silenced_repo,
         transcription_provider=transcription_provider,
-        responder=responder,
+        conversation_agent=conversation_agent,
     )
 
     first = await handler.handle({"payload": 1})
@@ -273,7 +338,7 @@ async def test_duplicate_message_is_ignored_by_dedup() -> None:
     assert len(event_repo.events) == 1
     assert lead_repo.upsert_calls == 1
     assert session_repo.upsert_calls == 2
-    assert len(responder.calls) == 1
+    assert len(conversation_agent.calls) == 1
 
 
 @pytest.mark.asyncio
@@ -283,7 +348,7 @@ async def test_silenced_phone_is_ignored_without_processing() -> None:
     session_repo = FakeSessionRepository()
     silenced_repo = FakeSilencedUserRepository(silenced_phones={"5214421234567"})
     transcription_provider = FakeTranscriptionProvider()
-    responder = FakeResponder()
+    conversation_agent = FakeConversationAgent()
     handler = _build_handler(
         messaging_provider=FakeMessagingProvider(event=_build_event(MessageKind.TEXT)),
         event_repo=event_repo,
@@ -291,7 +356,7 @@ async def test_silenced_phone_is_ignored_without_processing() -> None:
         session_repo=session_repo,
         silenced_repo=silenced_repo,
         transcription_provider=transcription_provider,
-        responder=responder,
+        conversation_agent=conversation_agent,
     )
 
     result = await handler.handle({"any": "payload"})
@@ -301,7 +366,7 @@ async def test_silenced_phone_is_ignored_without_processing() -> None:
     assert len(event_repo.events) == 0
     assert lead_repo.upsert_calls == 0
     assert session_repo.upsert_calls == 0
-    assert len(responder.calls) == 0
+    assert len(conversation_agent.calls) == 0
 
 
 @pytest.mark.asyncio
@@ -311,7 +376,7 @@ async def test_group_payload_is_ignored_without_crashing() -> None:
     session_repo = FakeSessionRepository()
     silenced_repo = FakeSilencedUserRepository()
     transcription_provider = FakeTranscriptionProvider()
-    responder = FakeResponder()
+    conversation_agent = FakeConversationAgent()
     handler = _build_handler(
         messaging_provider=FakeMessagingProvider(
             error=InvalidInboundPayloadError("invalid inbound sender: group")
@@ -321,7 +386,7 @@ async def test_group_payload_is_ignored_without_crashing() -> None:
         session_repo=session_repo,
         silenced_repo=silenced_repo,
         transcription_provider=transcription_provider,
-        responder=responder,
+        conversation_agent=conversation_agent,
     )
 
     result = await handler.handle({"any": "payload"})
@@ -331,7 +396,7 @@ async def test_group_payload_is_ignored_without_crashing() -> None:
     assert len(event_repo.events) == 0
     assert lead_repo.upsert_calls == 0
     assert session_repo.upsert_calls == 0
-    assert len(responder.calls) == 0
+    assert len(conversation_agent.calls) == 0
 
 
 @pytest.mark.asyncio
@@ -341,7 +406,7 @@ async def test_audio_message_calls_transcription_provider() -> None:
     session_repo = FakeSessionRepository()
     silenced_repo = FakeSilencedUserRepository()
     transcription_provider = FakeTranscriptionProvider("Texto transcrito")
-    responder = FakeResponder()
+    conversation_agent = FakeConversationAgent()
     handler = _build_handler(
         messaging_provider=FakeMessagingProvider(event=_build_event(MessageKind.AUDIO)),
         event_repo=event_repo,
@@ -349,7 +414,7 @@ async def test_audio_message_calls_transcription_provider() -> None:
         session_repo=session_repo,
         silenced_repo=silenced_repo,
         transcription_provider=transcription_provider,
-        responder=responder,
+        conversation_agent=conversation_agent,
     )
 
     result = await handler.handle({"audio": True})
@@ -357,4 +422,68 @@ async def test_audio_message_calls_transcription_provider() -> None:
     assert result.processed is True
     assert len(transcription_provider.calls) == 1
     assert event_repo.events[0].payload["transcription_text"] == "Texto transcrito"
-    assert len(responder.calls) == 1
+    assert len(conversation_agent.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_opt_out_message_silences_user_and_skips_responder() -> None:
+    event_repo = FakeConversationEventRepository()
+    lead_repo = FakeLeadProfileRepository()
+    session_repo = FakeSessionRepository()
+    silenced_repo = FakeSilencedUserRepository()
+    transcription_provider = FakeTranscriptionProvider()
+    conversation_agent = FakeConversationAgent()
+    provider = FakeMessagingProvider(event=_build_event(MessageKind.TEXT))
+    handler = _build_handler(
+        messaging_provider=provider,
+        event_repo=event_repo,
+        lead_repo=lead_repo,
+        session_repo=session_repo,
+        silenced_repo=silenced_repo,
+        transcription_provider=transcription_provider,
+        conversation_agent=conversation_agent,
+        orchestrator=FakeOrchestrator(
+            intent="opt_out",
+            fsm_event="opt_out_detected",
+            metadata={"matched_keyword": "stop"},
+        ),
+    )
+
+    result = await handler.handle({"text": "STOP"})
+
+    assert result.processed is True
+    assert len(silenced_repo.silence_calls) == 1
+    assert len(conversation_agent.calls) == 0
+    assert provider.sent_messages == []
+
+
+@pytest.mark.asyncio
+async def test_handoff_request_sends_handoff_ack_and_skips_echo() -> None:
+    event_repo = FakeConversationEventRepository()
+    lead_repo = FakeLeadProfileRepository()
+    session_repo = FakeSessionRepository()
+    silenced_repo = FakeSilencedUserRepository()
+    transcription_provider = FakeTranscriptionProvider()
+    conversation_agent = FakeConversationAgent()
+    provider = FakeMessagingProvider(event=_build_event(MessageKind.TEXT))
+    handler = _build_handler(
+        messaging_provider=provider,
+        event_repo=event_repo,
+        lead_repo=lead_repo,
+        session_repo=session_repo,
+        silenced_repo=silenced_repo,
+        transcription_provider=transcription_provider,
+        conversation_agent=conversation_agent,
+        orchestrator=FakeOrchestrator(
+            intent="handoff_request",
+            fsm_event="handoff_requested",
+            metadata={"handoff_response_text": "Un asesor te contactara pronto."},
+        ),
+    )
+
+    result = await handler.handle({"text": "asesor"})
+
+    assert result.processed is True
+    assert len(provider.sent_messages) == 1
+    assert provider.sent_messages[0]["text"] == "Un asesor te contactara pronto."
+    assert len(conversation_agent.calls) == 0

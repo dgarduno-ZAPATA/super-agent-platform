@@ -7,6 +7,7 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 import structlog
 
+from core.domain.classification import MessageClassification
 from core.domain.conversation_event import ConversationEvent
 from core.domain.lead import LeadProfile
 from core.domain.messaging import (
@@ -28,7 +29,8 @@ from core.ports.repositories import (
     SilencedUserRepository,
 )
 from core.ports.transcription_provider import TranscriptionProvider
-from core.services.responder import EchoResponder
+from core.services.conversation_agent import ConversationAgent
+from core.services.orchestrator import OrchestratorAgent
 
 logger = structlog.get_logger("super_agent_platform.core.services.inbound_handler")
 
@@ -52,7 +54,8 @@ class InboundMessageHandler:
         session_repository: SessionRepository,
         silenced_user_repository: SilencedUserRepository,
         transcription_provider: TranscriptionProvider,
-        responder: EchoResponder,
+        conversation_agent: ConversationAgent,
+        orchestrator: OrchestratorAgent,
         fsm_config: FSMConfig,
     ) -> None:
         self._messaging_provider = messaging_provider
@@ -61,7 +64,8 @@ class InboundMessageHandler:
         self._session_repository = session_repository
         self._silenced_user_repository = silenced_user_repository
         self._transcription_provider = transcription_provider
-        self._responder = responder
+        self._conversation_agent = conversation_agent
+        self._orchestrator = orchestrator
         self._fsm_config = fsm_config
         self._guard_registry = build_default_guard_registry()
         self._action_registry = build_default_action_registry()
@@ -120,11 +124,13 @@ class InboundMessageHandler:
         session = await self._get_or_create_session(
             lead_profile.id, enriched_inbound_event.received_at
         )
+        classification = await self._orchestrator.classify(enriched_inbound_event, session)
         resolved_state = self._resolve_session_state(session.current_state)
         fsm_context = self._build_fsm_context(
             inbound_event=enriched_inbound_event,
             lead_profile=lead_profile,
             session=session,
+            classification=classification,
         )
 
         fsm_engine = FSMEngine(
@@ -133,11 +139,13 @@ class InboundMessageHandler:
             guard_registry=self._guard_registry,
             action_registry=self._action_registry,
         )
-        transition_result = await fsm_engine.process_event("user_message", fsm_context)
+        transition_result = await fsm_engine.process_event(classification.fsm_event, fsm_context)
         logger.info(
             "fsm_event_processed",
             session_id=str(session.id),
             lead_id=str(lead_profile.id),
+            intent=classification.intent,
+            fsm_event=classification.fsm_event,
             old_state=transition_result.old_state,
             new_state=transition_result.new_state,
             transition_taken=transition_result.transition_taken,
@@ -148,8 +156,38 @@ class InboundMessageHandler:
             session=session,
             inbound_event=enriched_inbound_event,
             new_state=transition_result.new_state,
+            classification=classification,
         )
-        await self._responder.respond(enriched_inbound_event, updated_session)
+        if classification.intent == "opt_out":
+            await self._silenced_user_repository.silence(
+                enriched_inbound_event.from_phone,
+                reason="opt_out_by_user",
+                silenced_by="orchestrator",
+            )
+            logger.info(
+                "orchestrator_opt_out_detected",
+                phone=enriched_inbound_event.from_phone,
+                message_id=enriched_inbound_event.message_id,
+                matched_keyword=classification.metadata.get("matched_keyword"),
+            )
+        elif classification.intent == "handoff_request":
+            logger.info(
+                "orchestrator_handoff_requested",
+                phone=enriched_inbound_event.from_phone,
+                message_id=enriched_inbound_event.message_id,
+                matched_keyword=classification.metadata.get("matched_keyword"),
+            )
+            await self._send_handoff_acknowledgement(
+                inbound_event=enriched_inbound_event,
+                response_text=str(
+                    classification.metadata.get("handoff_response_text")
+                    or "Un asesor te contactara pronto."
+                ),
+            )
+        elif classification.intent == "unsupported":
+            await self._send_unsupported_message(enriched_inbound_event)
+        else:
+            await self._conversation_agent.respond(enriched_inbound_event, updated_session)
 
         logger.info(
             "inbound_webhook_processed",
@@ -215,6 +253,7 @@ class InboundMessageHandler:
         session: Session,
         inbound_event: InboundEvent,
         new_state: str,
+        classification: MessageClassification,
     ) -> Session:
         now = datetime.now(UTC)
         new_context = dict(session.context)
@@ -222,6 +261,12 @@ class InboundMessageHandler:
             "text": inbound_event.text,
             "type": inbound_event.kind.value,
             "timestamp": inbound_event.received_at.isoformat(),
+        }
+        new_context["last_classification"] = {
+            "intent": classification.intent,
+            "confidence": classification.confidence,
+            "fsm_event": classification.fsm_event,
+            "metadata": classification.metadata,
         }
 
         updated_session = Session(
@@ -240,6 +285,7 @@ class InboundMessageHandler:
         inbound_event: InboundEvent,
         lead_profile: LeadProfile,
         session: Session,
+        classification: MessageClassification,
     ) -> dict[str, object]:
         context = dict(session.context)
         context.update(
@@ -247,10 +293,56 @@ class InboundMessageHandler:
                 "phone": inbound_event.from_phone,
                 "name": lead_profile.name,
                 "is_silenced": False,
-                "opt_out_detected": False,
+                "opt_out_detected": classification.intent == "opt_out",
+                "campaign_id": session.context.get("campaign_id"),
             }
         )
         return context
+
+    async def _send_handoff_acknowledgement(
+        self,
+        inbound_event: InboundEvent,
+        response_text: str,
+    ) -> None:
+        correlation_id = inbound_event.message_id
+        try:
+            await self._messaging_provider.send_text(
+                to=inbound_event.from_phone,
+                text=response_text,
+                correlation_id=correlation_id,
+            )
+            logger.info(
+                "handoff_ack_sent",
+                phone=inbound_event.from_phone,
+                correlation_id=correlation_id,
+            )
+        except Exception:
+            logger.exception(
+                "handoff_ack_send_failed",
+                phone=inbound_event.from_phone,
+                correlation_id=correlation_id,
+            )
+
+    async def _send_unsupported_message(self, inbound_event: InboundEvent) -> None:
+        correlation_id = inbound_event.message_id
+        text = "Recibi tu mensaje pero no puedo procesar ese tipo de contenido todavia."
+        try:
+            await self._messaging_provider.send_text(
+                to=inbound_event.from_phone,
+                text=text,
+                correlation_id=correlation_id,
+            )
+            logger.info(
+                "unsupported_message_response_sent",
+                phone=inbound_event.from_phone,
+                correlation_id=correlation_id,
+            )
+        except Exception:
+            logger.exception(
+                "unsupported_message_response_failed",
+                phone=inbound_event.from_phone,
+                correlation_id=correlation_id,
+            )
 
     def _resolve_session_state(self, session_state: str) -> str:
         if session_state in self._fsm_config.states:

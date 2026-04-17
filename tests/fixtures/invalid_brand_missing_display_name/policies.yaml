@@ -7,5 +7,6 @@ opt_out_keywords:
   - baja
 handoff_keywords:
   - asesor
+handoff_response_text: "Entendido, un asesor de {brand_name} te contactará pronto. Gracias por tu paciencia."
 forbidden_terms:
   - garantia total

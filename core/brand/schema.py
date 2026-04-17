@@ -77,6 +77,7 @@ class PoliciesConfig(StrictConfigModel):
     max_messages_per_day_per_lead: int
     opt_out_keywords: list[str]
     handoff_keywords: list[str]
+    handoff_response_text: str
     forbidden_terms: list[str]
 
 

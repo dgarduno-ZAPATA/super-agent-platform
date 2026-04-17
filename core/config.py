@@ -25,6 +25,12 @@ class Settings(BaseSettings):
         default="change-me",
         alias="EVOLUTION_API_KEY",
     )
+    gcp_project_id: str = Field(default="change-me-project", alias="GCP_PROJECT_ID")
+    gcp_region: str = Field(default="us-central1", alias="GCP_REGION")
+    vertex_model_name: str = Field(
+        default="gemini-2.5-flash-lite",
+        alias="VERTEX_MODEL_NAME",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env.local",
