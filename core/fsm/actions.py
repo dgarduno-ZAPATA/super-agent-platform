@@ -13,7 +13,7 @@ logger = structlog.get_logger("super_agent_platform.core.fsm.actions")
 async def log_transition_action(context: dict[str, object]) -> None:
     logger.info(
         "fsm_transition_action",
-        event=context.get("event"),
+        fsm_event=context.get("event"),
         old_state=context.get("old_state"),
         new_state=context.get("new_state"),
         guard=context.get("guard"),
