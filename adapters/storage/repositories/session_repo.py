@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from adapters.storage.db import session_scope
@@ -87,3 +87,21 @@ class PostgresSessionRepository(SessionRepository):
             model.current_state = new_state
             model.context_json = context
             model.updated_at = datetime.now(UTC)
+
+    async def count_not_in_states(self, states: set[str]) -> int:
+        async with session_scope() as session:
+            statement = select(func.count()).select_from(SessionModel)
+            if states:
+                statement = statement.where(~SessionModel.current_state.in_(states))
+            result = await session.execute(statement)
+            return int(result.scalar_one())
+
+    async def count_by_state(self, state: str) -> int:
+        async with session_scope() as session:
+            statement = (
+                select(func.count())
+                .select_from(SessionModel)
+                .where(SessionModel.current_state == state)
+            )
+            result = await session.execute(statement)
+            return int(result.scalar_one())

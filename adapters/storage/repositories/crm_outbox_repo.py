@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from adapters.storage.db import session_scope
@@ -154,6 +154,12 @@ class PostgresCRMOutboxRepository(CRMOutboxRepository):
             model.status = "dlq"
             model.last_error = error
             model.updated_at = datetime.now(UTC)
+
+    async def count_dlq_items(self) -> int:
+        async with session_scope() as session:
+            statement = select(func.count()).select_from(CRMDLQModel)
+            result = await session.execute(statement)
+            return int(result.scalar_one())
 
     @staticmethod
     def _parse_aggregate_id(aggregate_id: str) -> UUID:

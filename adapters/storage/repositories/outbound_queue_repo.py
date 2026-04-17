@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from adapters.storage.db import session_scope
@@ -130,3 +130,31 @@ class PostgresOutboundQueueRepository(OutboundQueueRepository):
 
             model.status = "failed"
             model.last_error = error
+
+    async def count_by_priority_and_status(
+        self, priorities: set[int], statuses: set[str]
+    ) -> dict[int, dict[str, int]]:
+        counts: dict[int, dict[str, int]] = {}
+        if not priorities or not statuses:
+            return counts
+
+        async with session_scope() as session:
+            statement = (
+                select(
+                    OutboundQueueModel.priority,
+                    OutboundQueueModel.status,
+                    func.count().label("count"),
+                )
+                .where(
+                    OutboundQueueModel.priority.in_(priorities),
+                    OutboundQueueModel.status.in_(statuses),
+                )
+                .group_by(OutboundQueueModel.priority, OutboundQueueModel.status)
+            )
+            result = await session.execute(statement)
+            for priority, status, count in result.all():
+                if priority not in counts:
+                    counts[priority] = {}
+                counts[priority][status] = int(count)
+
+        return counts

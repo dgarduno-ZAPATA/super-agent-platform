@@ -10,6 +10,7 @@ from adapters.storage.db import get_session_factory
 from adapters.storage.repositories.crm_outbox_repo import PostgresCRMOutboxRepository
 from adapters.storage.repositories.event_repo import PostgresConversationEventRepository
 from adapters.storage.repositories.lead_repo import PostgresLeadProfileRepository
+from adapters.storage.repositories.outbound_queue_repo import PostgresOutboundQueueRepository
 from adapters.storage.repositories.session_repo import PostgresSessionRepository
 from adapters.storage.repositories.silenced_repo import PostgresSilencedUserRepository
 from adapters.transcription.whisper_stub import WhisperStubTranscriptionProvider
@@ -24,11 +25,13 @@ from core.ports.repositories import (
     ConversationEventRepository,
     CRMOutboxRepository,
     LeadProfileRepository,
+    OutboundQueueRepository,
     SessionRepository,
     SilencedUserRepository,
 )
 from core.ports.transcription_provider import TranscriptionProvider
 from core.services.conversation_agent import ConversationAgent
+from core.services.dashboard_service import DashboardService
 from core.services.handoff_service import HandoffService
 from core.services.inbound_handler import InboundMessageHandler
 from core.services.orchestrator import OrchestratorAgent
@@ -82,6 +85,10 @@ def get_session_repository() -> SessionRepository:
     return PostgresSessionRepository()
 
 
+def get_outbound_queue_repository() -> OutboundQueueRepository:
+    return PostgresOutboundQueueRepository()
+
+
 def get_handoff_service(
     session_repository: Annotated[SessionRepository, Depends(get_session_repository)],
     conversation_event_repository: Annotated[
@@ -91,6 +98,24 @@ def get_handoff_service(
     return HandoffService(
         session_repository=session_repository,
         conversation_event_repository=conversation_event_repository,
+    )
+
+
+def get_dashboard_service(
+    session_repository: Annotated[SessionRepository, Depends(get_session_repository)],
+    conversation_event_repository: Annotated[
+        ConversationEventRepository, Depends(get_conversation_event_repository)
+    ],
+    outbound_queue_repository: Annotated[
+        OutboundQueueRepository, Depends(get_outbound_queue_repository)
+    ],
+    crm_outbox_repository: Annotated[CRMOutboxRepository, Depends(get_crm_outbox_repository)],
+) -> DashboardService:
+    return DashboardService(
+        session_repository=session_repository,
+        conversation_event_repository=conversation_event_repository,
+        outbound_queue_repository=outbound_queue_repository,
+        crm_outbox_repository=crm_outbox_repository,
     )
 
 

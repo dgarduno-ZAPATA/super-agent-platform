@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from adapters.storage.db import session_scope
@@ -74,6 +74,16 @@ class PostgresConversationEventRepository(ConversationEventRepository):
             models = result.scalars().all()
 
         return [_to_domain(model) for model in models]
+
+    async def count_since(self, since: datetime) -> int:
+        async with session_scope() as session:
+            statement = (
+                select(func.count())
+                .select_from(ConversationEventModel)
+                .where(ConversationEventModel.created_at >= since)
+            )
+            result = await session.execute(statement)
+            return int(result.scalar_one())
 
     @staticmethod
     def _is_dedup_violation(error: IntegrityError) -> bool:

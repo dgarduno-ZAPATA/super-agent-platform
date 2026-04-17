@@ -6,6 +6,7 @@ from fastapi import FastAPI
 
 from api.middleware.correlation import CorrelationMiddleware
 from api.routers.conversations import router as conversations_router
+from api.routers.dashboard import router as dashboard_router
 from api.routers.webhook import router as webhook_router
 from core.brand.loader import BrandValidationError, load_brand
 from core.config import get_settings
@@ -50,6 +51,7 @@ def create_app() -> FastAPI:
     app.router.lifespan_context = lifespan
     app.include_router(webhook_router)
     app.include_router(conversations_router)
+    app.include_router(dashboard_router)
 
     @app.get("/health")
     async def healthcheck() -> dict[str, str]:

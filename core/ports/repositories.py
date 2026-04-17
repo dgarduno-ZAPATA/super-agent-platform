@@ -23,6 +23,12 @@ class SessionRepository(Protocol):
     ) -> None:
         """Update the canonical state and context of an existing session."""
 
+    async def count_not_in_states(self, states: set[str]) -> int:
+        """Count sessions where current_state is not in the provided set."""
+
+    async def count_by_state(self, state: str) -> int:
+        """Count sessions by exact current_state."""
+
 
 class ConversationEventRepository(Protocol):
     async def append(self, event: ConversationEvent) -> bool:
@@ -37,6 +43,9 @@ class ConversationEventRepository(Protocol):
         self, conversation_id: UUID, limit: int = 100
     ) -> list[ConversationEvent]:
         """List the most recent events for a conversation up to the provided limit."""
+
+    async def count_since(self, since: datetime) -> int:
+        """Count conversation events created at or after the provided timestamp."""
 
 
 class LeadProfileRepository(Protocol):
@@ -70,6 +79,11 @@ class OutboundQueueRepository(Protocol):
     async def mark_as_failed(self, item_id: UUID, error: str) -> None:
         """Mark an outbound queue item as failed with an error reason."""
 
+    async def count_by_priority_and_status(
+        self, priorities: set[int], statuses: set[str]
+    ) -> dict[int, dict[str, int]]:
+        """Count outbound items grouped by priority and status."""
+
 
 class CRMOutboxRepository(Protocol):
     async def enqueue_operation(
@@ -90,6 +104,9 @@ class CRMOutboxRepository(Protocol):
 
     async def move_to_dlq(self, item_id: UUID, error: str) -> None:
         """Move operation to dead-letter queue when retries are exhausted."""
+
+    async def count_dlq_items(self) -> int:
+        """Count records currently stored in CRM dead-letter queue."""
 
 
 class SilencedUserRepository(Protocol):
