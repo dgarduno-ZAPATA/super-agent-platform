@@ -8,15 +8,23 @@ import pytest
 
 from core.brand.loader import load_brand
 from core.domain.conversation_event import ConversationEvent
-from core.domain.llm import LLMResponse, ToolSchema
+from core.domain.llm import LLMResponse, ToolCall, ToolResult, ToolSchema
 from core.domain.messaging import ChatMessage, InboundEvent, MessageDeliveryReceipt, MessageKind
 from core.domain.session import Session
 from core.services.conversation_agent import ConversationAgent
+from core.services.skills import SkillExecutionContext
 
 
 class FakeLLMProvider:
-    def __init__(self, content: str = "Respuesta generada") -> None:
+    def __init__(
+        self,
+        content: str = "Respuesta generada",
+        first_response: LLMResponse | None = None,
+        second_response: LLMResponse | None = None,
+    ) -> None:
         self.content = content
+        self.first_response = first_response
+        self.second_response = second_response
         self.calls: list[dict[str, object]] = []
 
     async def complete(
@@ -26,6 +34,7 @@ class FakeLLMProvider:
         tools: list[ToolSchema] | None,
         temperature: float,
     ) -> LLMResponse:
+        call_index = len(self.calls)
         self.calls.append(
             {
                 "messages": messages,
@@ -34,6 +43,10 @@ class FakeLLMProvider:
                 "temperature": temperature,
             }
         )
+        if call_index == 0 and self.first_response is not None:
+            return self.first_response
+        if call_index == 1 and self.second_response is not None:
+            return self.second_response
         return LLMResponse(content=self.content, finish_reason="stop", metadata={"model": "fake"})
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
@@ -112,6 +125,33 @@ class FakeConversationEventRepository:
         return filtered[:limit]
 
 
+class FakeSkillRegistry:
+    def __init__(self, result: ToolResult | None = None) -> None:
+        self.result = result or ToolResult(
+            tool_call_id="tool-call-1",
+            name="query_inventory",
+            content="Resultados de inventario: 1. Freightliner Cascadia",
+        )
+        self.calls: list[tuple[ToolCall, SkillExecutionContext]] = []
+
+    def get_tool_schemas(self) -> list[ToolSchema]:
+        return [
+            ToolSchema(
+                name="query_inventory",
+                description="Consulta inventario",
+                input_schema={
+                    "type": "object",
+                    "properties": {"product_name": {"type": "string"}},
+                    "required": ["product_name"],
+                },
+            )
+        ]
+
+    async def execute_tool(self, call: ToolCall, context: SkillExecutionContext) -> ToolResult:
+        self.calls.append((call, context))
+        return self.result
+
+
 def _conversation_id(phone: str = "5214421234567") -> UUID:
     return uuid5(NAMESPACE_URL, f"whatsapp:{phone}")
 
@@ -170,6 +210,7 @@ async def test_prompt_includes_current_fsm_state() -> None:
         messaging_provider=messaging,
         brand=brand,
         conversation_event_repository=event_repo,
+        skill_registry=FakeSkillRegistry(),
     )
 
     await agent.respond(_event("Necesito cotizacion"), _session("qualification"))
@@ -189,6 +230,7 @@ async def test_calls_llm_then_messaging_provider() -> None:
         messaging_provider=messaging,
         brand=brand,
         conversation_event_repository=event_repo,
+        skill_registry=FakeSkillRegistry(),
     )
 
     await agent.respond(_event("Hola"), _session("greeting"))
@@ -209,6 +251,7 @@ async def test_persists_outbound_message_in_event_repository() -> None:
         messaging_provider=messaging,
         brand=brand,
         conversation_event_repository=event_repo,
+        skill_registry=FakeSkillRegistry(),
     )
     session = _session("discovery")
 
@@ -217,3 +260,52 @@ async def test_persists_outbound_message_in_event_repository() -> None:
     outbound = [event for event in event_repo.events if event.event_type == "outbound_message"]
     assert len(outbound) == 1
     assert outbound[0].payload["text"] == "Mensaje persistido"
+
+
+@pytest.mark.asyncio
+async def test_tool_call_flow_executes_skill_and_returns_final_text() -> None:
+    brand = load_brand(Path("brand"))
+    first_response = LLMResponse(
+        content="",
+        finish_reason="tool_calls",
+        tool_calls=(
+            ToolCall(
+                id="call-1",
+                name="query_inventory",
+                arguments={"product_name": "Cascadia"},
+            ),
+        ),
+    )
+    second_response = LLMResponse(
+        content="Te comparto opciones de inventario disponibles.",
+        finish_reason="stop",
+    )
+    llm = FakeLLMProvider(first_response=first_response, second_response=second_response)
+    messaging = FakeMessagingProvider()
+    event_repo = FakeConversationEventRepository()
+    skills = FakeSkillRegistry(
+        result=ToolResult(
+            tool_call_id="call-1",
+            name="query_inventory",
+            content="Resultados de inventario: 1. Freightliner Cascadia 2020",
+        )
+    )
+    agent = ConversationAgent(
+        llm_provider=llm,
+        messaging_provider=messaging,
+        brand=brand,
+        conversation_event_repository=event_repo,
+        skill_registry=skills,
+    )
+
+    await agent.respond(_event("Busco un Cascadia"), _session("catalog_navigation"))
+
+    assert len(llm.calls) == 2
+    assert len(skills.calls) == 1
+    second_call_messages = llm.calls[1]["messages"]
+    assert isinstance(second_call_messages, list)
+    assert any(
+        isinstance(message, ChatMessage) and message.role == "tool"
+        for message in second_call_messages
+    )
+    assert messaging.sent_messages[0]["text"] == "Te comparto opciones de inventario disponibles."

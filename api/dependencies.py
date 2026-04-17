@@ -27,6 +27,7 @@ from core.ports.transcription_provider import TranscriptionProvider
 from core.services.conversation_agent import ConversationAgent
 from core.services.inbound_handler import InboundMessageHandler
 from core.services.orchestrator import OrchestratorAgent
+from core.services.skills import SkillRegistry
 
 
 def get_messaging_provider() -> MessagingProvider:
@@ -94,6 +95,18 @@ def get_orchestrator_agent(
     )
 
 
+async def get_skill_registry(
+    knowledge_provider: Annotated[KnowledgeProvider, Depends(get_knowledge_provider)],
+    messaging_provider: Annotated[MessagingProvider, Depends(get_messaging_provider)],
+    brand: Annotated[Brand, Depends(get_brand)],
+) -> SkillRegistry:
+    return SkillRegistry(
+        knowledge_provider=knowledge_provider,
+        messaging_provider=messaging_provider,
+        brand=brand,
+    )
+
+
 def get_conversation_agent(
     llm_provider: Annotated[LLMProvider, Depends(get_llm_provider)],
     messaging_provider: Annotated[MessagingProvider, Depends(get_messaging_provider)],
@@ -101,12 +114,14 @@ def get_conversation_agent(
     conversation_event_repository: Annotated[
         ConversationEventRepository, Depends(get_conversation_event_repository)
     ],
+    skill_registry: Annotated[SkillRegistry, Depends(get_skill_registry)],
 ) -> ConversationAgent:
     return ConversationAgent(
         llm_provider=llm_provider,
         messaging_provider=messaging_provider,
         brand=brand,
         conversation_event_repository=conversation_event_repository,
+        skill_registry=skill_registry,
     )
 
 

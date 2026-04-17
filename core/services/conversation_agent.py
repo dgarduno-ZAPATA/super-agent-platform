@@ -7,11 +7,13 @@ import structlog
 
 from core.brand.schema import Brand
 from core.domain.conversation_event import ConversationEvent
+from core.domain.llm import LLMResponse, ToolResult
 from core.domain.messaging import ChatMessage, InboundEvent
 from core.domain.session import Session
 from core.ports.llm_provider import LLMProvider
 from core.ports.messaging_provider import MessagingProvider
 from core.ports.repositories import ConversationEventRepository
+from core.services.skills import SkillExecutionContext, SkillRegistry
 
 logger = structlog.get_logger("super_agent_platform.core.services.conversation_agent")
 
@@ -23,11 +25,13 @@ class ConversationAgent:
         messaging_provider: MessagingProvider,
         brand: Brand,
         conversation_event_repository: ConversationEventRepository,
+        skill_registry: SkillRegistry,
     ) -> None:
         self._llm_provider = llm_provider
         self._messaging_provider = messaging_provider
         self._brand = brand
         self._conversation_event_repository = conversation_event_repository
+        self._skill_registry = skill_registry
 
     async def respond(self, event: InboundEvent, session: Session) -> None:
         correlation_id = self._extract_correlation_id(event)
@@ -43,11 +47,13 @@ class ConversationAgent:
                 messages = [self._build_user_message(event)]
 
             system_prompt = self._build_system_prompt(session.current_state)
-            llm_response = await self._llm_provider.complete(
+            llm_response = await self._run_tool_calling_loop(
                 messages=messages[-15:],
-                system=system_prompt,
-                tools=None,
-                temperature=0.2,
+                system_prompt=system_prompt,
+                context=SkillExecutionContext(
+                    phone=event.from_phone,
+                    correlation_id=correlation_id,
+                ),
             )
 
             delivery = await self._messaging_provider.send_text(
@@ -148,3 +154,39 @@ class ConversationAgent:
     @staticmethod
     def _build_user_message(event: InboundEvent) -> ChatMessage:
         return ChatMessage(role="user", content=(event.text or "").strip())
+
+    async def _run_tool_calling_loop(
+        self,
+        messages: list[ChatMessage],
+        system_prompt: str,
+        context: SkillExecutionContext,
+    ) -> LLMResponse:
+        working_messages = list(messages)
+        max_rounds = 3
+        for _ in range(max_rounds):
+            llm_response = await self._llm_provider.complete(
+                messages=working_messages,
+                system=system_prompt,
+                tools=self._skill_registry.get_tool_schemas(),
+                temperature=0.2,
+            )
+            if not llm_response.tool_calls:
+                return llm_response
+
+            tool_results: list[ToolResult] = []
+            for call in llm_response.tool_calls:
+                result = await self._skill_registry.execute_tool(call=call, context=context)
+                tool_results.append(result)
+
+            for result in tool_results:
+                working_messages.append(
+                    ChatMessage(
+                        role="tool",
+                        name=result.name,
+                        tool_call_id=result.tool_call_id,
+                        content=result.content,
+                        metadata={"is_error": result.is_error, **result.metadata},
+                    )
+                )
+
+        return llm_response

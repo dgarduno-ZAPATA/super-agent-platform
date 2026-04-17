@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 
-from core.domain.llm import LLMResponse, ToolSchema
+from core.domain.llm import LLMResponse, ToolCall, ToolSchema
 from core.domain.messaging import ChatMessage
 from core.ports.llm_provider import LLMProvider
 
@@ -36,8 +36,6 @@ class VertexLLMAdapter(LLMProvider):
         tools: list[ToolSchema] | None,
         temperature: float,
     ) -> LLMResponse:
-        del tools
-
         access_token = await self._resolve_access_token()
         endpoint = (
             f"https://{self._region}-aiplatform.googleapis.com/v1/projects/"
@@ -49,6 +47,10 @@ class VertexLLMAdapter(LLMProvider):
             "contents": [self._map_message(message) for message in messages],
             "generationConfig": {"temperature": temperature},
         }
+        if tools:
+            payload["tools"] = [
+                {"functionDeclarations": [self._map_tool_schema(tool) for tool in tools]}
+            ]
 
         response = await self._client.post(
             endpoint,
@@ -72,12 +74,41 @@ class VertexLLMAdapter(LLMProvider):
         content = first_candidate.get("content", {})
         parts = content.get("parts", []) if isinstance(content, dict) else []
         text_chunks: list[str] = []
+        parsed_tool_calls: list[ToolCall] = []
+
         if isinstance(parts, list):
-            for part in parts:
-                if isinstance(part, dict):
-                    text_value = part.get("text")
-                    if isinstance(text_value, str):
-                        text_chunks.append(text_value)
+            for index, part in enumerate(parts):
+                if not isinstance(part, dict):
+                    continue
+
+                text_value = part.get("text")
+                if isinstance(text_value, str):
+                    text_chunks.append(text_value)
+
+                function_call_raw = part.get("functionCall")
+                if not isinstance(function_call_raw, dict):
+                    continue
+
+                name = function_call_raw.get("name")
+                if not isinstance(name, str) or not name.strip():
+                    continue
+
+                args_raw = function_call_raw.get("args")
+                arguments = args_raw if isinstance(args_raw, dict) else {}
+
+                call_id_raw = function_call_raw.get("id")
+                call_id = (
+                    call_id_raw
+                    if isinstance(call_id_raw, str) and call_id_raw.strip()
+                    else f"tool_call_{index}"
+                )
+                parsed_tool_calls.append(
+                    ToolCall(
+                        id=call_id,
+                        name=name,
+                        arguments=arguments,
+                    )
+                )
 
         response_text = "\n".join(chunk for chunk in text_chunks if chunk).strip()
         if not response_text:
@@ -91,6 +122,7 @@ class VertexLLMAdapter(LLMProvider):
         return LLMResponse(
             content=response_text,
             finish_reason=finish_reason,
+            tool_calls=tuple(parsed_tool_calls),
             metadata={"model": self._model_name, "provider": "vertex"},
         )
 
@@ -181,6 +213,24 @@ class VertexLLMAdapter(LLMProvider):
 
     @staticmethod
     def _map_message(message: ChatMessage) -> dict[str, Any]:
+        if message.role == "tool":
+            tool_name = message.name or str(message.metadata.get("tool_name") or "")
+            response_payload: dict[str, object] = {
+                "name": tool_name,
+                "response": {"content": message.content},
+            }
+            if message.tool_call_id:
+                response_payload["id"] = message.tool_call_id
+            return {"role": "user", "parts": [{"functionResponse": response_payload}]}
+
         role_map = {"assistant": "model"}
         role = role_map.get(message.role, "user")
         return {"role": role, "parts": [{"text": message.content}]}
+
+    @staticmethod
+    def _map_tool_schema(tool: ToolSchema) -> dict[str, object]:
+        return {
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": tool.input_schema,
+        }
