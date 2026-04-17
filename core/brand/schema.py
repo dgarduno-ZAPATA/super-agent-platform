@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from core.fsm.schema import FSMConfig
+
 
 class StrictConfigModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
@@ -103,4 +105,5 @@ class Brand(StrictConfigModel):
     policies: PoliciesConfig
     crm_mapping: CRMMappingConfig
     channels: ChannelsConfig
+    fsm: FSMConfig
     prompt: str = Field(min_length=1)

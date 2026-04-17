@@ -13,6 +13,8 @@ def test_example_brand_loads_successfully() -> None:
 
     assert brand.brand.display_name == "SelecTrucks Zapata"
     assert brand.channels.whatsapp.provider_type in valid_provider_types
+    assert brand.fsm.initial_state == "idle"
+    assert "idle" in brand.fsm.states
     assert "Estefania" in brand.prompt
 
 

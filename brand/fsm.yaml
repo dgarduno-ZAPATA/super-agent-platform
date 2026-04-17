@@ -1,0 +1,270 @@
+initial_state: idle
+states:
+  idle:
+    description: Estado inicial sin conversacion activa.
+    on_enter:
+      - update_session
+    on_exit: []
+    allowed_transitions:
+      - target: greeting
+        event: user_message
+        guard: is_not_silenced
+        actions:
+          - log_transition
+          - update_crm_stage
+
+  greeting:
+    description: Primer contacto o reactivacion de la conversacion.
+    on_enter:
+      - update_session
+    on_exit: []
+    timeout_minutes: 240
+    timeout_target: cooldown
+    allowed_transitions:
+      - target: discovery
+        event: user_message
+        guard: is_not_silenced
+        actions:
+          - log_transition
+      - target: handoff_pending
+        event: agent_command
+        guard: always
+        actions:
+          - log_transition
+          - notify_agent
+      - target: cooldown
+        event: opt_out_detected
+        guard: opt_out_detected
+        actions:
+          - log_transition
+
+  discovery:
+    description: Recopilacion de necesidades del cliente.
+    on_enter:
+      - update_session
+    on_exit: []
+    timeout_minutes: 180
+    timeout_target: cooldown
+    allowed_transitions:
+      - target: qualification
+        event: user_message
+        guard: has_name
+        actions:
+          - log_transition
+          - update_crm_stage
+      - target: catalog_navigation
+        event: user_message
+        guard: always
+        actions:
+          - log_transition
+      - target: handoff_pending
+        event: agent_command
+        guard: always
+        actions:
+          - log_transition
+          - notify_agent
+      - target: cooldown
+        event: opt_out_detected
+        guard: opt_out_detected
+        actions:
+          - log_transition
+
+  qualification:
+    description: Validacion de viabilidad del lead.
+    on_enter:
+      - update_session
+      - update_crm_stage
+    on_exit: []
+    timeout_minutes: 180
+    timeout_target: cooldown
+    allowed_transitions:
+      - target: catalog_navigation
+        event: user_message
+        guard: has_phone_number
+        actions:
+          - log_transition
+      - target: objection_handling
+        event: user_message
+        guard: always
+        actions:
+          - log_transition
+      - target: handoff_pending
+        event: agent_command
+        guard: always
+        actions:
+          - log_transition
+          - notify_agent
+      - target: cooldown
+        event: opt_out_detected
+        guard: opt_out_detected
+        actions:
+          - log_transition
+
+  catalog_navigation:
+    description: Navegacion de inventario y opciones para el lead.
+    on_enter:
+      - update_session
+    on_exit: []
+    timeout_minutes: 120
+    timeout_target: cooldown
+    allowed_transitions:
+      - target: document_delivery
+        event: user_message
+        guard: always
+        actions:
+          - log_transition
+          - send_document
+      - target: objection_handling
+        event: user_message
+        guard: always
+        actions:
+          - log_transition
+      - target: appointment_flow
+        event: agent_command
+        guard: always
+        actions:
+          - log_transition
+
+  document_delivery:
+    description: Entrega de fichas tecnicas, corridas o documentos.
+    on_enter:
+      - update_session
+      - send_document
+    on_exit: []
+    timeout_minutes: 90
+    timeout_target: cooldown
+    allowed_transitions:
+      - target: objection_handling
+        event: user_message
+        guard: always
+        actions:
+          - log_transition
+      - target: appointment_flow
+        event: user_message
+        guard: has_phone_number
+        actions:
+          - log_transition
+      - target: handoff_pending
+        event: agent_command
+        guard: always
+        actions:
+          - log_transition
+          - notify_agent
+
+  objection_handling:
+    description: Manejo de objeciones de precio, marca o condicion.
+    on_enter:
+      - update_session
+    on_exit: []
+    timeout_minutes: 120
+    timeout_target: cooldown
+    allowed_transitions:
+      - target: catalog_navigation
+        event: user_message
+        guard: always
+        actions:
+          - log_transition
+      - target: appointment_flow
+        event: user_message
+        guard: has_phone_number
+        actions:
+          - log_transition
+      - target: handoff_pending
+        event: agent_command
+        guard: always
+        actions:
+          - log_transition
+          - notify_agent
+
+  appointment_flow:
+    description: Flujo para agendar cita, llamada o visita.
+    on_enter:
+      - update_session
+      - update_crm_stage
+    on_exit: []
+    timeout_minutes: 60
+    timeout_target: cooldown
+    allowed_transitions:
+      - target: handoff_pending
+        event: agent_command
+        guard: always
+        actions:
+          - log_transition
+          - notify_agent
+      - target: closed
+        event: user_message
+        guard: has_phone_number
+        actions:
+          - log_transition
+          - update_crm_stage
+
+  handoff_pending:
+    description: Esperando que un agente humano tome la conversacion.
+    on_enter:
+      - update_session
+      - notify_agent
+    on_exit: []
+    timeout_minutes: 30
+    timeout_target: handoff_active
+    allowed_transitions:
+      - target: handoff_active
+        event: agent_command
+        guard: always
+        actions:
+          - log_transition
+      - target: cooldown
+        event: timeout
+        guard: always
+        actions:
+          - log_transition
+
+  handoff_active:
+    description: Humano en control; el bot permanece en silencio.
+    on_enter:
+      - update_session
+    on_exit: []
+    timeout_minutes: 720
+    timeout_target: cooldown
+    allowed_transitions:
+      - target: cooldown
+        event: agent_command
+        guard: always
+        actions:
+          - log_transition
+      - target: closed
+        event: timeout
+        guard: always
+        actions:
+          - log_transition
+
+  cooldown:
+    description: Conversacion cerrada temporalmente en espera de reactivacion.
+    on_enter:
+      - update_session
+    on_exit: []
+    timeout_minutes: 10080
+    timeout_target: closed
+    allowed_transitions:
+      - target: greeting
+        event: user_message
+        guard: is_not_silenced
+        actions:
+          - log_transition
+      - target: closed
+        event: timeout
+        guard: always
+        actions:
+          - log_transition
+
+  closed:
+    description: Conversacion finalizada.
+    on_enter:
+      - update_session
+      - update_crm_stage
+    on_exit: []
+    allowed_transitions:
+      - target: greeting
+        event: user_message
+        guard: is_not_silenced
+        actions:
+          - log_transition

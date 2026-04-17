@@ -30,6 +30,7 @@ class EchoResponder:
                 to=event.from_phone,
                 lead_id=str(session.lead_id),
                 session_id=str(session.id),
+                current_state=session.current_state,
                 message_kind=event.kind.value,
                 correlation_id=correlation_id,
             )
@@ -39,6 +40,7 @@ class EchoResponder:
                 to=event.from_phone,
                 lead_id=str(session.lead_id),
                 session_id=str(session.id),
+                current_state=session.current_state,
                 message_kind=event.kind.value,
                 correlation_id=correlation_id,
             )

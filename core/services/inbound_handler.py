@@ -16,6 +16,10 @@ from core.domain.messaging import (
     UnsupportedEventTypeError,
 )
 from core.domain.session import Session
+from core.fsm.actions import build_default_action_registry
+from core.fsm.engine import FSMEngine
+from core.fsm.guards import build_default_guard_registry
+from core.fsm.schema import FSMConfig
 from core.ports.messaging_provider import MessagingProvider
 from core.ports.repositories import (
     ConversationEventRepository,
@@ -49,6 +53,7 @@ class InboundMessageHandler:
         silenced_user_repository: SilencedUserRepository,
         transcription_provider: TranscriptionProvider,
         responder: EchoResponder,
+        fsm_config: FSMConfig,
     ) -> None:
         self._messaging_provider = messaging_provider
         self._conversation_event_repository = conversation_event_repository
@@ -57,6 +62,9 @@ class InboundMessageHandler:
         self._silenced_user_repository = silenced_user_repository
         self._transcription_provider = transcription_provider
         self._responder = responder
+        self._fsm_config = fsm_config
+        self._guard_registry = build_default_guard_registry()
+        self._action_registry = build_default_action_registry()
 
     async def handle(self, raw_payload: dict[str, object]) -> InboundHandleResult:
         try:
@@ -109,16 +117,39 @@ class InboundMessageHandler:
             )
 
         lead_profile = await self._get_or_create_lead_profile(enriched_inbound_event)
-        session, created = await self._get_or_create_session(
+        session = await self._get_or_create_session(
             lead_profile.id, enriched_inbound_event.received_at
         )
+        resolved_state = self._resolve_session_state(session.current_state)
+        fsm_context = self._build_fsm_context(
+            inbound_event=enriched_inbound_event,
+            lead_profile=lead_profile,
+            session=session,
+        )
 
-        await self._responder.respond(enriched_inbound_event, session)
-        await self._update_session_after_response(
+        fsm_engine = FSMEngine(
+            config=self._fsm_config,
+            current_state=resolved_state,
+            guard_registry=self._guard_registry,
+            action_registry=self._action_registry,
+        )
+        transition_result = await fsm_engine.process_event("user_message", fsm_context)
+        logger.info(
+            "fsm_event_processed",
+            session_id=str(session.id),
+            lead_id=str(lead_profile.id),
+            old_state=transition_result.old_state,
+            new_state=transition_result.new_state,
+            transition_taken=transition_result.transition_taken,
+            no_transition_matched=transition_result.no_transition_matched,
+        )
+
+        updated_session = await self._update_session_after_response(
             session=session,
             inbound_event=enriched_inbound_event,
-            is_first_contact=created,
+            new_state=transition_result.new_state,
         )
+        await self._responder.respond(enriched_inbound_event, updated_session)
 
         logger.info(
             "inbound_webhook_processed",
@@ -161,32 +192,29 @@ class InboundMessageHandler:
             )
         )
 
-    async def _get_or_create_session(
-        self, lead_id: UUID, occurred_at: datetime
-    ) -> tuple[Session, bool]:
+    async def _get_or_create_session(self, lead_id: UUID, occurred_at: datetime) -> Session:
         existing = await self._session_repository.get_by_lead_id(lead_id)
         if existing is not None:
-            return existing, False
+            return existing
 
         now = datetime.now(UTC)
-        created = await self._session_repository.upsert(
+        return await self._session_repository.upsert(
             Session(
                 id=uuid4(),
                 lead_id=lead_id,
-                current_state="new_lead",
+                current_state=self._fsm_config.initial_state,
                 context={},
                 created_at=now,
                 updated_at=now,
                 last_event_at=occurred_at,
             )
         )
-        return created, True
 
     async def _update_session_after_response(
         self,
         session: Session,
         inbound_event: InboundEvent,
-        is_first_contact: bool,
+        new_state: str,
     ) -> Session:
         now = datetime.now(UTC)
         new_context = dict(session.context)
@@ -199,13 +227,41 @@ class InboundMessageHandler:
         updated_session = Session(
             id=session.id,
             lead_id=session.lead_id,
-            current_state="greeting" if is_first_contact else session.current_state,
+            current_state=new_state,
             context=new_context,
             created_at=session.created_at,
             updated_at=now,
             last_event_at=inbound_event.received_at,
         )
         return await self._session_repository.upsert(updated_session)
+
+    def _build_fsm_context(
+        self,
+        inbound_event: InboundEvent,
+        lead_profile: LeadProfile,
+        session: Session,
+    ) -> dict[str, object]:
+        context = dict(session.context)
+        context.update(
+            {
+                "phone": inbound_event.from_phone,
+                "name": lead_profile.name,
+                "is_silenced": False,
+                "opt_out_detected": False,
+            }
+        )
+        return context
+
+    def _resolve_session_state(self, session_state: str) -> str:
+        if session_state in self._fsm_config.states:
+            return session_state
+
+        logger.warning(
+            "fsm_unknown_session_state_fallback",
+            session_state=session_state,
+            fallback_state=self._fsm_config.initial_state,
+        )
+        return self._fsm_config.initial_state
 
     def _enrich_event_for_processing(self, inbound_event: InboundEvent) -> InboundEvent:
         if inbound_event.kind is not MessageKind.AUDIO:

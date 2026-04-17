@@ -14,6 +14,7 @@ from core.domain.messaging import (
     MessageKind,
 )
 from core.domain.session import Session
+from core.fsm.schema import FSMConfig
 from core.ports.messaging_provider import MessagingProvider
 from core.services.inbound_handler import InboundMessageHandler
 
@@ -176,6 +177,33 @@ def _build_handler(
     transcription_provider: FakeTranscriptionProvider,
     responder: FakeResponder,
 ) -> InboundMessageHandler:
+    fsm_config = FSMConfig.model_validate(
+        {
+            "initial_state": "idle",
+            "states": {
+                "idle": {
+                    "description": "idle",
+                    "allowed_transitions": [
+                        {
+                            "target": "greeting",
+                            "event": "user_message",
+                            "guard": "always",
+                            "actions": [],
+                        }
+                    ],
+                    "on_enter": [],
+                    "on_exit": [],
+                },
+                "greeting": {
+                    "description": "greeting",
+                    "allowed_transitions": [],
+                    "on_enter": [],
+                    "on_exit": [],
+                },
+            },
+        }
+    )
+
     return InboundMessageHandler(
         messaging_provider=messaging_provider,
         conversation_event_repository=event_repo,
@@ -184,6 +212,7 @@ def _build_handler(
         silenced_user_repository=silenced_repo,
         transcription_provider=transcription_provider,
         responder=responder,
+        fsm_config=fsm_config,
     )
 
 

@@ -40,6 +40,8 @@ def create_app() -> FastAPI:
             app_env=settings.app_env,
             brand_path=str(settings.brand_path),
             brand_name=brand.brand.display_name,
+            fsm_states=len(brand.fsm.states),
+            fsm_initial_state=brand.fsm.initial_state,
         )
         yield
         logger.info("app_stopped", service=SERVICE_NAME)

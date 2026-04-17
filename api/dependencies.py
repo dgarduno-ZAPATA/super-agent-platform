@@ -10,6 +10,7 @@ from adapters.storage.repositories.silenced_repo import PostgresSilencedUserRepo
 from adapters.transcription.whisper_stub import WhisperStubTranscriptionProvider
 from core.brand.schema import Brand
 from core.config import get_settings
+from core.fsm.schema import FSMConfig
 from core.ports.messaging_provider import MessagingProvider
 from core.ports.repositories import (
     ConversationEventRepository,
@@ -50,6 +51,10 @@ def get_brand(request: Request) -> Brand:
     return request.app.state.brand
 
 
+def get_fsm_config(brand: Annotated[Brand, Depends(get_brand)]) -> FSMConfig:
+    return brand.fsm
+
+
 def get_echo_responder(
     messaging_provider: Annotated[MessagingProvider, Depends(get_messaging_provider)],
     brand: Annotated[Brand, Depends(get_brand)],
@@ -69,6 +74,7 @@ def get_inbound_message_handler(
     ],
     transcription_provider: Annotated[TranscriptionProvider, Depends(get_transcription_provider)],
     responder: Annotated[EchoResponder, Depends(get_echo_responder)],
+    fsm_config: Annotated[FSMConfig, Depends(get_fsm_config)],
 ) -> InboundMessageHandler:
     return InboundMessageHandler(
         messaging_provider=messaging_provider,
@@ -78,4 +84,5 @@ def get_inbound_message_handler(
         silenced_user_repository=silenced_user_repository,
         transcription_provider=transcription_provider,
         responder=responder,
+        fsm_config=fsm_config,
     )

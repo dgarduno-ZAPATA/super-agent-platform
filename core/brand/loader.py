@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 import yaml
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from core.brand.schema import (
     Brand,
@@ -15,15 +15,15 @@ from core.brand.schema import (
     OutboundTemplatesConfig,
     PoliciesConfig,
     ProductsConfig,
-    StrictConfigModel,
 )
+from core.fsm.schema import FSMConfig
 
 
 class BrandValidationError(ValueError):
     pass
 
 
-SchemaT = TypeVar("SchemaT", bound=StrictConfigModel)
+SchemaT = TypeVar("SchemaT", bound=BaseModel)
 
 
 def _load_yaml_file(path: Path) -> dict[str, Any]:
@@ -81,5 +81,6 @@ def load_brand(path: Path) -> Brand:
         policies=_load_schema(brand_path / "policies.yaml", PoliciesConfig),
         crm_mapping=_load_schema(brand_path / "crm_mapping.yaml", CRMMappingConfig),
         channels=_load_schema(brand_path / "channels.yaml", ChannelsConfig),
+        fsm=_load_schema(brand_path / "fsm.yaml", FSMConfig),
         prompt=prompt,
     )
