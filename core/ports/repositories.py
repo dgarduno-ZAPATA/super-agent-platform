@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
 from core.domain.conversation_event import ConversationEvent
 from core.domain.lead import LeadProfile
+from core.domain.outbound_queue import OutboundQueueItem
 from core.domain.session import Session
 
 
@@ -42,6 +44,30 @@ class LeadProfileRepository(Protocol):
 
     async def upsert_by_phone(self, profile: LeadProfile) -> LeadProfile:
         """Insert or update a lead profile using phone as the business key."""
+
+    async def get_dormant_leads(self, days_inactive: int, limit: int = 100) -> list[LeadProfile]:
+        """Return leads without recent activity based on profile recency heuristics."""
+
+
+class OutboundQueueRepository(Protocol):
+    async def enqueue(
+        self,
+        lead_id: UUID,
+        campaign_id: UUID | None,
+        payload: dict[str, object],
+        priority: int,
+        scheduled_at: datetime,
+    ) -> UUID:
+        """Insert a pending outbound item and return its id."""
+
+    async def get_next_batch(self, limit: int = 10) -> list[OutboundQueueItem]:
+        """Fetch next pending items with FOR UPDATE SKIP LOCKED semantics."""
+
+    async def mark_as_sent(self, item_id: UUID) -> None:
+        """Mark an outbound queue item as sent."""
+
+    async def mark_as_failed(self, item_id: UUID, error: str) -> None:
+        """Mark an outbound queue item as failed with an error reason."""
 
 
 class SilencedUserRepository(Protocol):

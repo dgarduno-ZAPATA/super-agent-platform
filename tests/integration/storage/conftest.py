@@ -65,6 +65,7 @@ def _cleanup_all_test_data() -> None:
         async with db_module.session_scope() as session:
             for table_name in [
                 "conversation_events",
+                "outbound_queue",
                 "sessions",
                 "silenced_users",
                 "lead_profiles",

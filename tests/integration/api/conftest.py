@@ -68,6 +68,7 @@ def clean_webhook_tables(async_engine_for_test: AsyncEngine) -> None:
         async with db_module.session_scope() as session:
             for table_name in [
                 "conversation_events",
+                "outbound_queue",
                 "sessions",
                 "silenced_users",
                 "lead_profiles",

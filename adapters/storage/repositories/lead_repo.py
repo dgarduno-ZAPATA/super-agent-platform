@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -69,3 +69,18 @@ class PostgresLeadProfileRepository(LeadProfileRepository):
             model = result.scalar_one()
 
         return _to_domain(model)
+
+    async def get_dormant_leads(self, days_inactive: int, limit: int = 100) -> list[LeadProfile]:
+        threshold = datetime.now(UTC) - timedelta(days=days_inactive)
+
+        async with session_scope() as session:
+            statement = (
+                select(LeadProfileModel)
+                .where(LeadProfileModel.updated_at <= threshold)
+                .order_by(LeadProfileModel.updated_at.asc())
+                .limit(limit)
+            )
+            result = await session.execute(statement)
+            models = result.scalars().all()
+
+        return [_to_domain(model) for model in models]
