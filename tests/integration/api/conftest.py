@@ -80,6 +80,16 @@ def clean_webhook_tables(async_engine_for_test: AsyncEngine) -> None:
     run_async(_delete_rows())
 
 
+@pytest.fixture(autouse=True)
+def set_test_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JWT_SECRET_KEY", "test-secret-key-32-chars-minimum")
+    monkeypatch.setenv("ADMIN_PASSWORD", "test-admin-password")
+    monkeypatch.setenv("INTERNAL_TOKEN", "test-internal-token")
+    monkeypatch.setenv("EVOLUTION_API_KEY", "test-evolution-key")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    get_settings.cache_clear()
+
+
 @pytest.fixture
 def client() -> TestClient:
     app = create_app()

@@ -73,4 +73,10 @@ jobs:
         run: alembic upgrade head
 
       - name: Run tests
+        env:
+          JWT_SECRET_KEY: ci-test-secret-key-32-chars-long
+          ADMIN_PASSWORD: ci-test-admin-password
+          INTERNAL_TOKEN: ci-test-internal-token
+          EVOLUTION_API_KEY: ci-test-evolution-key
+          ADMIN_USERNAME: admin
         run: pytest -v --basetemp=.pytest_tmp
