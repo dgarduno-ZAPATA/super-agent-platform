@@ -23,6 +23,7 @@ class Settings(BaseSettings):
         alias="EVOLUTION_INSTANCE_NAME",
     )
     evolution_api_key: str = Field(
+        default="",
         alias="EVOLUTION_API_KEY",
     )
     gcp_project_id: str = Field(default="change-me-project", alias="GCP_PROJECT_ID")
@@ -57,12 +58,12 @@ class Settings(BaseSettings):
         default=60, alias="CAMPAIGN_SCHEDULER_INTERVAL_SECONDS"
     )
     campaign_scheduler_enabled: bool = Field(default=True, alias="CAMPAIGN_SCHEDULER_ENABLED")
-    internal_token: str = Field(alias="INTERNAL_TOKEN")
-    jwt_secret_key: str = Field(alias="JWT_SECRET_KEY")
+    internal_token: str = Field(default="", alias="INTERNAL_TOKEN")
+    jwt_secret_key: str = Field(default="", alias="JWT_SECRET_KEY")
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
     access_token_expire_minutes: int = Field(default=60 * 8, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
     admin_username: str = Field(default="admin", alias="ADMIN_USERNAME")
-    admin_password: str = Field(alias="ADMIN_PASSWORD")
+    admin_password: str = Field(default="", alias="ADMIN_PASSWORD")
 
     model_config = SettingsConfigDict(
         env_file=".env.local",
@@ -73,4 +74,4 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()  # type: ignore[call-arg]
+    return Settings()

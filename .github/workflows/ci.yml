@@ -65,6 +65,11 @@ jobs:
         run: mypy core/
 
       - name: Run Alembic migrations
+        env:
+          EVOLUTION_API_KEY: ci-dummy-key
+          INTERNAL_TOKEN: ci-dummy-token
+          JWT_SECRET_KEY: ci-dummy-jwt-secret-32-chars-min
+          ADMIN_PASSWORD: ci-dummy-password
         run: alembic upgrade head
 
       - name: Run tests
