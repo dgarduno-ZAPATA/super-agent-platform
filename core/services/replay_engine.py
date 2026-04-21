@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from core.domain.conversation_event import ConversationEvent
@@ -61,7 +62,8 @@ class ReplayEngine:
     async def build_trace(self, lead_id: UUID) -> dict[str, object]:
         data = await self.load_conversation(lead_id)
         replay = await self.replay_conversation(lead_id=lead_id, dry_run=True)
-        transition_by_event = {item["event_id"]: item for item in replay["transitions"]}
+        transitions = cast(list[dict[str, object]], replay["transitions"])
+        transition_by_event = {item["event_id"]: item for item in transitions}
 
         trace_events: list[dict[str, object]] = []
         inbound_count = 0

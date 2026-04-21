@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 from fastapi import HTTPException, status
 from jose import ExpiredSignatureError, JWTError, jwt
@@ -16,7 +17,8 @@ def create_access_token(data: dict[str, object], expires_minutes: int | None = N
     to_encode = dict(data)
     expire_at = datetime.now(UTC) + timedelta(minutes=expire_minutes)
     to_encode["exp"] = int(expire_at.timestamp())
-    return jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    encoded = jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    return cast(str, encoded)
 
 
 def verify_token(token: str) -> dict[str, object]:
