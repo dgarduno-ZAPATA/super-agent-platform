@@ -1,5 +1,12 @@
-name: selectrucks_zapata
-display_name: SelecTrucks Zapata
-default_locale: es-MX
+name: raul_rodriguez
+display_name: "Raúl Rodríguez"
+default_locale: es_MX
 timezone: America/Mexico_City
 primary_color: "#005BAC"
+inventory_columns:
+  name: nombre
+  description: descripcion
+  price: precio
+  availability: disponible
+  category: categoria
+  sku: sku

@@ -77,12 +77,12 @@ async def test_schedule_campaign_enqueues_p1_messages() -> None:
         brand=brand,
     )
 
-    await agent.schedule_campaign("reactivation_used_trucks")
+    await agent.schedule_campaign("reactivacion_general")
 
     assert len(queue_repo.enqueued) == 2
     assert lead_repo.calls[0][0] == 90
     assert queue_repo.enqueued[0]["priority"] == 1
     payload = queue_repo.enqueued[0]["payload"]
     assert isinstance(payload, dict)
-    assert payload["campaign_key"] == "reactivation_used_trucks"
-    assert "Estefania" in str(payload["text"])
+    assert payload["campaign_key"] == "reactivacion_general"
+    assert "Raúl" in str(payload["text"])

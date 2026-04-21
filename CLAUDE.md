@@ -46,6 +46,7 @@ Nada crítico vive en código. Todo lo que cambia entre marcas vive en `brand/`:
 - `knowledge/` — documentos fuente para RAG
 
 Si detectas que algo se está hardcodeando y debería vivir en `brand/`, **detente y avisa**.
+Las sucursales y teléfonos de encargados se leen de Google Sheets, NO de YAML hardcodeado.
 
 ### 3. Postgres siempre, SQLite NUNCA
 Race conditions con múltiples workers y SQLite son un dolor ya vivido. Postgres con transacciones serializables desde el día uno, sin excepciones. Ni para tests (usa un Postgres de test, no SQLite).
@@ -139,4 +140,4 @@ Este proyecto nace de lecciones reales de Tono-Bot y Followup-Bot. No repitas es
 
 ## Sprint activo
 
-**Sprint 2 — Prompt 2.3 (Webhook inbound Evolution).** Objetivo: exponer el endpoint `/webhooks/whatsapp` para recibir eventos entrantes, aplicar dedup, persistir en repos async y registrar logs estructurados, sin enviar respuesta al usuario.
+**Sprint 7 — Prompt 7.1.** Objetivo: identidad de Raúl Rodríguez, sucursales desde Google Sheets y handoff routing por sucursal.

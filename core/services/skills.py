@@ -3,8 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.brand.schema import Brand, ProductConfig
+from core.brand.schema import Brand
 from core.domain.llm import ToolCall, ToolResult, ToolSchema
+from core.ports.inventory_provider import InventoryProvider
 from core.ports.knowledge_provider import KnowledgeProvider
 from core.ports.messaging_provider import MessagingProvider
 
@@ -19,10 +20,12 @@ class SkillRegistry:
     def __init__(
         self,
         knowledge_provider: KnowledgeProvider,
+        inventory_provider: InventoryProvider,
         messaging_provider: MessagingProvider,
         brand: Brand,
     ) -> None:
         self._knowledge_provider = knowledge_provider
+        self._inventory_provider = inventory_provider
         self._messaging_provider = messaging_provider
         self._brand = brand
 
@@ -50,7 +53,7 @@ class SkillRegistry:
                             "description": "Nombre o termino para buscar producto.",
                         }
                     },
-                    "required": ["product_name"],
+                    "required": [],
                 },
             ),
             ToolSchema(
@@ -81,7 +84,7 @@ class SkillRegistry:
                 return ToolResult(tool_call_id=call.id, name=call.name, content=content)
 
             if call.name == "query_inventory":
-                product_name = self._get_required_string(call.arguments, "product_name")
+                product_name = self._get_optional_string(call.arguments, "product_name")
                 content = self.query_inventory(product_name=product_name)
                 return ToolResult(tool_call_id=call.id, name=call.name, content=content)
 
@@ -121,19 +124,28 @@ class SkillRegistry:
             lines.append(f"{index}. ({chunk.source_id}, score={chunk.score:.3f}) {chunk.content}")
         return "\n".join(lines)
 
-    def query_inventory(self, product_name: str) -> str:
-        matches = self._match_products(product_name)
+    def query_inventory(self, product_name: str | None = None) -> str:
+        matches = (
+            self._inventory_provider.search_products(product_name)
+            if product_name and product_name.strip()
+            else self._inventory_provider.get_products()
+        )
         if not matches:
-            return f"No se encontraron productos para '{product_name}'."
+            if product_name and product_name.strip():
+                return f"No se encontraron productos para '{product_name}'."
+            return "No hay productos disponibles en inventario."
 
         lines = ["Resultados de inventario:"]
         for index, product in enumerate(matches, start=1):
-            price = product.metadata.get("price", "No disponible")
-            availability = product.metadata.get("availability", "No disponible")
+            sku = str(product.get("sku", "N/A"))
+            name = str(product.get("name", "Sin nombre"))
+            price = str(product.get("price", "No disponible"))
+            availability = str(product.get("availability", "No disponible"))
+            description = str(product.get("description", "Sin descripcion"))
             lines.append(
-                f"{index}. {product.name} (SKU: {product.sku}) | "
+                f"{index}. {name} (SKU: {sku}) | "
                 f"Precio: {price} | Disponibilidad: {availability} | "
-                f"Descripcion: {product.description}"
+                f"Descripcion: {description}"
             )
         return "\n".join(lines)
 
@@ -148,20 +160,22 @@ class SkillRegistry:
         )
         return "Documento enviado con exito"
 
-    def _match_products(self, product_name: str) -> list[ProductConfig]:
-        lookup = product_name.lower().strip()
-        results: list[ProductConfig] = []
-        for product in self._brand.products.products:
-            if lookup in product.name.lower() or lookup in product.sku.lower():
-                results.append(product)
-        return results[:5]
-
     @staticmethod
     def _get_required_string(arguments: dict[str, object], key: str) -> str:
         value = arguments.get(key)
         if not isinstance(value, str) or not value.strip():
             raise ValueError(f"argumento requerido faltante: {key}")
         return value.strip()
+
+    @staticmethod
+    def _get_optional_string(arguments: dict[str, object], key: str) -> str | None:
+        value = arguments.get(key)
+        if not isinstance(value, str):
+            return None
+        normalized = value.strip()
+        if not normalized:
+            return None
+        return normalized
 
     @staticmethod
     def _resolve_document_url(document_id: str) -> str:

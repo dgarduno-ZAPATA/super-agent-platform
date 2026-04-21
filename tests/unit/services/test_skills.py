@@ -95,10 +95,30 @@ class FakeMessagingProvider:
         raise NotImplementedError
 
 
+class FakeInventoryProvider:
+    def get_products(self) -> list[dict[str, object]]:
+        return [
+            {
+                "sku": "FL-CASCADIA-2020",
+                "name": "Freightliner Cascadia 2020",
+                "description": "Unidad demo",
+                "price": "No disponible",
+                "availability": "No disponible",
+                "category": "tractocamion",
+            }
+        ]
+
+    def search_products(self, query: str) -> list[dict[str, object]]:
+        if "cascadia" in query.lower():
+            return self.get_products()
+        return []
+
+
 @pytest.mark.asyncio
 async def test_query_knowledge_base_formats_results() -> None:
     registry = SkillRegistry(
         knowledge_provider=FakeKnowledgeProvider(),
+        inventory_provider=FakeInventoryProvider(),
         messaging_provider=FakeMessagingProvider(),
         brand=load_brand(Path("brand")),
     )
@@ -112,6 +132,7 @@ async def test_query_knowledge_base_formats_results() -> None:
 def test_query_inventory_formats_product_data() -> None:
     registry = SkillRegistry(
         knowledge_provider=FakeKnowledgeProvider(),
+        inventory_provider=FakeInventoryProvider(),
         messaging_provider=FakeMessagingProvider(),
         brand=load_brand(Path("brand")),
     )
@@ -129,6 +150,7 @@ async def test_send_document_calls_messaging_provider() -> None:
     messaging = FakeMessagingProvider()
     registry = SkillRegistry(
         knowledge_provider=FakeKnowledgeProvider(),
+        inventory_provider=FakeInventoryProvider(),
         messaging_provider=messaging,
         brand=load_brand(Path("brand")),
     )

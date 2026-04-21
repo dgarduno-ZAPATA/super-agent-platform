@@ -12,6 +12,12 @@ from core.ports.repositories import LeadProfileRepository, OutboundQueueReposito
 logger = structlog.get_logger("super_agent_platform.core.services.campaign_agent")
 
 
+class _TemplateValues(dict[str, str]):
+    def __missing__(self, key: str) -> str:
+        del key
+        return ""
+
+
 class CampaignAgent:
     def __init__(
         self,
@@ -73,4 +79,13 @@ class CampaignAgent:
     @staticmethod
     def _render_template(template_text: str, lead: LeadProfile) -> str:
         name = lead.name or "cliente"
-        return template_text.format(name=name, phone=lead.phone)
+        vehicle = lead.attributes.get("vehiculo_previo")
+        vehicle_text = vehicle if isinstance(vehicle, str) and vehicle.strip() else "camión"
+        values = _TemplateValues(
+            name=name,
+            nombre=name,
+            phone=lead.phone,
+            telefono=lead.phone,
+            vehiculo_previo=vehicle_text,
+        )
+        return template_text.format_map(values)

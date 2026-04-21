@@ -5,6 +5,7 @@ from uuid import UUID
 
 import pytest
 
+from core.domain.branch import Branch
 from core.domain.classification import MessageClassification
 from core.domain.conversation_event import ConversationEvent
 from core.domain.lead import LeadProfile
@@ -233,6 +234,28 @@ class FakeOrchestrator:
         )
 
 
+class FakeBranchProvider:
+    def __init__(self, branches: list[Branch] | None = None) -> None:
+        self.branches = branches or []
+
+    def list_branches(self) -> list[Branch]:
+        return self.branches
+
+    def get_branch_by_centro(self, centro: str) -> Branch | None:
+        normalized = centro.strip().casefold()
+        for branch in self.branches:
+            if branch.centro_sheet.strip().casefold() == normalized:
+                return branch
+        return None
+
+    def get_branch_by_key(self, key: str) -> Branch | None:
+        normalized = key.strip().casefold()
+        for branch in self.branches:
+            if branch.sucursal_key.strip().casefold() == normalized:
+                return branch
+        return None
+
+
 def _build_event(kind: MessageKind = MessageKind.TEXT) -> InboundEvent:
     return InboundEvent(
         message_id="wamid-001",
@@ -260,6 +283,7 @@ def _build_handler(
     transcription_provider: FakeTranscriptionProvider,
     conversation_agent: FakeConversationAgent,
     orchestrator: FakeOrchestrator | None = None,
+    branch_provider: FakeBranchProvider | None = None,
 ) -> InboundMessageHandler:
     fsm_config = FSMConfig.model_validate(
         {
@@ -323,6 +347,7 @@ def _build_handler(
         conversation_agent=conversation_agent,
         orchestrator=orchestrator or FakeOrchestrator(),
         fsm_config=fsm_config,
+        branch_provider=branch_provider or FakeBranchProvider(),
     )
 
 

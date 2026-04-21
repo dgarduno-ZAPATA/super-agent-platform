@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from adapters.storage.db import session_scope
+from core.config import get_settings
 from tests.integration.api.conftest import run_async
 
 
@@ -174,17 +175,46 @@ def _seed_dashboard_data() -> None:
 
 def test_dashboard_stats_endpoint_returns_expected_metrics(client: TestClient) -> None:
     _seed_dashboard_data()
+    settings = get_settings()
+    token_response = client.post(
+        "/api/v1/auth/token",
+        json={"username": settings.admin_username, "password": settings.admin_password},
+    )
+    token = token_response.json()["access_token"]
 
-    response = client.get("/api/v1/dashboard/stats")
+    response = client.get(
+        "/api/v1/dashboard/stats",
+        headers={"Authorization": f"Bearer {token}"},
+    )
 
     assert response.status_code == 200
-    assert response.json() == {
-        "active_sessions": 3,
+    payload = response.json()
+    assert payload == {
+        "active_sessions": 4,
+        "sessions_in_handoff": 0,
+        "sessions_by_fsm_state": {
+            "closed": 1,
+            "greeting": 1,
+            "handoff_pending": 1,
+            "idle": 1,
+            "qualification": 1,
+        },
         "pending_handoffs": 1,
+        "total_leads": 5,
+        "new_leads_today": 5,
+        "leads_by_stage": {"unknown": 5},
+        "messages_sent_today": 0,
+        "messages_pending": 2,
+        "crm_sync_pending": 0,
+        "crm_sync_dlq": 2,
         "outbound_queue_stats": {
             "P0": {"pending": 1, "failed": 1},
             "P1": {"pending": 1, "failed": 0},
         },
         "crm_sync_errors": 2,
         "total_messages_last_24h": 2,
+        "handoffs_today": 0,
+        "avg_response_time_minutes": None,
+        "generated_at": payload["generated_at"],
     }
+    datetime.fromisoformat(payload["generated_at"])

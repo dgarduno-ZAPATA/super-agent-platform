@@ -29,6 +29,17 @@ class SessionRepository(Protocol):
     async def count_by_state(self, state: str) -> int:
         """Count sessions by exact current_state."""
 
+    async def count_active_since(
+        self, since: datetime, excluded_states: set[str] | None = None
+    ) -> int:
+        """Count sessions with recent activity, excluding selected states."""
+
+    async def count_human_control_sessions(self) -> int:
+        """Count sessions currently handled by a human agent."""
+
+    async def count_grouped_by_state(self) -> dict[str, int]:
+        """Count sessions grouped by current FSM state."""
+
 
 class ConversationEventRepository(Protocol):
     async def append(self, event: ConversationEvent) -> bool:
@@ -44,11 +55,26 @@ class ConversationEventRepository(Protocol):
     ) -> list[ConversationEvent]:
         """List the most recent events for a conversation up to the provided limit."""
 
+    async def list_by_lead_id(self, lead_id: UUID, limit: int = 1000) -> list[ConversationEvent]:
+        """List events for a lead ordered by creation time."""
+
     async def count_since(self, since: datetime) -> int:
         """Count conversation events created at or after the provided timestamp."""
 
+    async def count_by_type_since(self, event_type: str, since: datetime) -> int:
+        """Count conversation events by event_type at or after the provided timestamp."""
+
+    async def average_response_time_minutes_since(self, since: datetime) -> float | None:
+        """
+        Return average minutes between first inbound and first outbound message
+        per conversation with inbound activity since provided datetime.
+        """
+
 
 class LeadProfileRepository(Protocol):
+    async def get_by_id(self, lead_id: UUID) -> LeadProfile | None:
+        """Return a lead profile by id, if present."""
+
     async def get_by_phone(self, phone: str) -> LeadProfile | None:
         """Return a lead profile by canonical phone number, if present."""
 
@@ -57,6 +83,15 @@ class LeadProfileRepository(Protocol):
 
     async def get_dormant_leads(self, days_inactive: int, limit: int = 100) -> list[LeadProfile]:
         """Return leads without recent activity based on profile recency heuristics."""
+
+    async def count_total(self) -> int:
+        """Count total lead profiles."""
+
+    async def count_created_since(self, since: datetime) -> int:
+        """Count lead profiles created at or after provided datetime."""
+
+    async def count_grouped_by_stage(self) -> dict[str, int]:
+        """Count leads grouped by CRM stage metadata."""
 
 
 class OutboundQueueRepository(Protocol):
@@ -84,6 +119,9 @@ class OutboundQueueRepository(Protocol):
     ) -> dict[int, dict[str, int]]:
         """Count outbound items grouped by priority and status."""
 
+    async def count_by_statuses(self, statuses: set[str]) -> int:
+        """Count outbound items by status filter."""
+
 
 class CRMOutboxRepository(Protocol):
     async def enqueue_operation(
@@ -107,6 +145,9 @@ class CRMOutboxRepository(Protocol):
 
     async def count_dlq_items(self) -> int:
         """Count records currently stored in CRM dead-letter queue."""
+
+    async def count_pending_items(self) -> int:
+        """Count CRM outbox items in pending status."""
 
 
 class SilencedUserRepository(Protocol):

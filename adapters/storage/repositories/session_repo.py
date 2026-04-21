@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import func, select
+from sqlalchemy.sql import and_, or_
 from sqlalchemy.dialects.postgresql import insert
 
 from adapters.storage.db import session_scope
@@ -105,3 +106,41 @@ class PostgresSessionRepository(SessionRepository):
             )
             result = await session.execute(statement)
             return int(result.scalar_one())
+
+    async def count_active_since(
+        self, since: datetime, excluded_states: set[str] | None = None
+    ) -> int:
+        async with session_scope() as session:
+            statement = select(func.count()).select_from(SessionModel).where(
+                or_(
+                    SessionModel.last_event_at >= since,
+                    and_(SessionModel.last_event_at.is_(None), SessionModel.updated_at >= since),
+                )
+            )
+            if excluded_states:
+                statement = statement.where(~SessionModel.current_state.in_(excluded_states))
+            result = await session.execute(statement)
+            return int(result.scalar_one())
+
+    async def count_human_control_sessions(self) -> int:
+        async with session_scope() as session:
+            statement = select(func.count()).select_from(SessionModel).where(
+                or_(
+                    SessionModel.current_state == "handoff_active",
+                    SessionModel.context_json.op("->>")("human_in_control") == "true",
+                    SessionModel.context_json.op("->>")("owner") == "human_agent",
+                    SessionModel.context_json.op("->")("handoff").op("->>")("active") == "true",
+                )
+            )
+            result = await session.execute(statement)
+            return int(result.scalar_one())
+
+    async def count_grouped_by_state(self) -> dict[str, int]:
+        async with session_scope() as session:
+            statement = (
+                select(SessionModel.current_state, func.count().label("count"))
+                .group_by(SessionModel.current_state)
+                .order_by(SessionModel.current_state.asc())
+            )
+            result = await session.execute(statement)
+            return {state: int(count) for state, count in result.all()}

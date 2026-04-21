@@ -223,9 +223,33 @@ class VertexLLMAdapter(LLMProvider):
                 response_payload["id"] = message.tool_call_id
             return {"role": "user", "parts": [{"functionResponse": response_payload}]}
 
-        role_map = {"assistant": "model"}
-        role = role_map.get(message.role, "user")
-        return {"role": role, "parts": [{"text": message.content}]}
+        role = "model" if message.role in {"assistant", "model"} else "user"
+        parts: list[dict[str, object]] = []
+        if message.content:
+            parts.append({"text": message.content})
+
+        if role == "model":
+            tool_calls_raw = message.metadata.get("tool_calls")
+            if isinstance(tool_calls_raw, tuple | list):
+                for raw_call in tool_calls_raw:
+                    if isinstance(raw_call, ToolCall):
+                        name = raw_call.name
+                        arguments = raw_call.arguments
+                    elif isinstance(raw_call, dict):
+                        raw_name = raw_call.get("name")
+                        raw_arguments = raw_call.get("arguments")
+                        name = raw_name if isinstance(raw_name, str) else ""
+                        arguments = raw_arguments if isinstance(raw_arguments, dict) else {}
+                    else:
+                        continue
+
+                    if not name:
+                        continue
+                    parts.append({"functionCall": {"name": name, "args": arguments}})
+
+        if not parts:
+            parts.append({"text": ""})
+        return {"role": role, "parts": parts}
 
     @staticmethod
     def _map_tool_schema(tool: ToolSchema) -> dict[str, object]:

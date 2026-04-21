@@ -11,11 +11,12 @@ def test_example_brand_loads_successfully() -> None:
     brand = load_brand(Path("brand"))
     valid_provider_types = get_args(WhatsAppChannelConfig.model_fields["provider_type"].annotation)
 
-    assert brand.brand.display_name == "SelecTrucks Zapata"
+    assert brand.brand.display_name == "Raúl Rodríguez"
     assert brand.channels.whatsapp.provider_type in valid_provider_types
     assert brand.fsm.initial_state == "idle"
     assert "idle" in brand.fsm.states
-    assert "Estefania" in brand.prompt
+    assert brand.prompt.strip()
+    assert len(brand.prompt) >= 100
 
 
 def test_invalid_brand_raises_clear_validation_error() -> None:

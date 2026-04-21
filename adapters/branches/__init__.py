@@ -1,0 +1,1 @@
+"""Branch data source adapters."""

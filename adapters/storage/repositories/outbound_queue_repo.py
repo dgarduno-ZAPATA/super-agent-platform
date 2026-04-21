@@ -158,3 +158,15 @@ class PostgresOutboundQueueRepository(OutboundQueueRepository):
                 counts[priority][status] = int(count)
 
         return counts
+
+    async def count_by_statuses(self, statuses: set[str]) -> int:
+        if not statuses:
+            return 0
+        async with session_scope() as session:
+            statement = (
+                select(func.count())
+                .select_from(OutboundQueueModel)
+                .where(OutboundQueueModel.status.in_(statuses))
+            )
+            result = await session.execute(statement)
+            return int(result.scalar_one())

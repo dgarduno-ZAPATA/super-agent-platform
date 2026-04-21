@@ -173,6 +173,14 @@ class ConversationAgent:
             if not llm_response.tool_calls:
                 return llm_response
 
+            working_messages.append(
+                ChatMessage(
+                    role="assistant",
+                    content=llm_response.content,
+                    metadata={"tool_calls": llm_response.tool_calls},
+                )
+            )
+
             tool_results: list[ToolResult] = []
             for call in llm_response.tool_calls:
                 result = await self._skill_registry.execute_tool(call=call, context=context)

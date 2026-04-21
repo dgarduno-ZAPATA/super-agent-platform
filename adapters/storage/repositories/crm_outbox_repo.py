@@ -161,6 +161,16 @@ class PostgresCRMOutboxRepository(CRMOutboxRepository):
             result = await session.execute(statement)
             return int(result.scalar_one())
 
+    async def count_pending_items(self) -> int:
+        async with session_scope() as session:
+            statement = (
+                select(func.count())
+                .select_from(CRMOutboxModel)
+                .where(CRMOutboxModel.status == "pending")
+            )
+            result = await session.execute(statement)
+            return int(result.scalar_one())
+
     @staticmethod
     def _parse_aggregate_id(aggregate_id: str) -> UUID:
         try:

@@ -75,6 +75,19 @@ class PostgresConversationEventRepository(ConversationEventRepository):
 
         return [_to_domain(model) for model in models]
 
+    async def list_by_lead_id(self, lead_id: UUID, limit: int = 1000) -> list[ConversationEvent]:
+        async with session_scope() as session:
+            statement = (
+                select(ConversationEventModel)
+                .where(ConversationEventModel.lead_id == lead_id)
+                .order_by(ConversationEventModel.created_at.asc())
+                .limit(limit)
+            )
+            result = await session.execute(statement)
+            models = result.scalars().all()
+
+        return [_to_domain(model) for model in models]
+
     async def count_since(self, since: datetime) -> int:
         async with session_scope() as session:
             statement = (
@@ -84,6 +97,68 @@ class PostgresConversationEventRepository(ConversationEventRepository):
             )
             result = await session.execute(statement)
             return int(result.scalar_one())
+
+    async def count_by_type_since(self, event_type: str, since: datetime) -> int:
+        async with session_scope() as session:
+            statement = (
+                select(func.count())
+                .select_from(ConversationEventModel)
+                .where(
+                    ConversationEventModel.event_type == event_type,
+                    ConversationEventModel.created_at >= since,
+                )
+            )
+            result = await session.execute(statement)
+            return int(result.scalar_one())
+
+    async def average_response_time_minutes_since(self, since: datetime) -> float | None:
+        async with session_scope() as session:
+            inbound_subquery = (
+                select(
+                    ConversationEventModel.conversation_id.label("conversation_id"),
+                    func.min(ConversationEventModel.created_at).label("first_inbound_at"),
+                )
+                .where(
+                    ConversationEventModel.event_type == "inbound_message",
+                    ConversationEventModel.created_at >= since,
+                )
+                .group_by(ConversationEventModel.conversation_id)
+                .subquery()
+            )
+
+            outbound_subquery = (
+                select(
+                    ConversationEventModel.conversation_id.label("conversation_id"),
+                    func.min(ConversationEventModel.created_at).label("first_outbound_at"),
+                )
+                .where(ConversationEventModel.event_type == "outbound_message")
+                .group_by(ConversationEventModel.conversation_id)
+                .subquery()
+            )
+
+            statement = (
+                select(
+                    func.avg(
+                        func.extract(
+                            "epoch",
+                            outbound_subquery.c.first_outbound_at - inbound_subquery.c.first_inbound_at,
+                        )
+                        / 60.0
+                    )
+                )
+                .select_from(inbound_subquery)
+                .join(
+                    outbound_subquery,
+                    outbound_subquery.c.conversation_id == inbound_subquery.c.conversation_id,
+                )
+                .where(outbound_subquery.c.first_outbound_at >= inbound_subquery.c.first_inbound_at)
+            )
+
+            result = await session.execute(statement)
+            value = result.scalar_one_or_none()
+            if value is None:
+                return None
+            return float(value)
 
     @staticmethod
     def _is_dedup_violation(error: IntegrityError) -> bool:

@@ -7,6 +7,8 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 import structlog
 
+from core.brand.schema import Brand
+from core.domain.branch import Branch
 from core.domain.classification import MessageClassification
 from core.domain.conversation_event import ConversationEvent
 from core.domain.lead import LeadProfile
@@ -17,10 +19,11 @@ from core.domain.messaging import (
     UnsupportedEventTypeError,
 )
 from core.domain.session import Session
-from core.fsm.actions import build_default_action_registry
+from core.fsm.actions import FSMActionDependencies, build_default_action_registry
 from core.fsm.engine import FSMEngine
 from core.fsm.guards import build_default_guard_registry
 from core.fsm.schema import FSMConfig
+from core.ports.branch_provider import BranchProvider
 from core.ports.messaging_provider import MessagingProvider
 from core.ports.repositories import (
     ConversationEventRepository,
@@ -59,6 +62,8 @@ class InboundMessageHandler:
         conversation_agent: ConversationAgent,
         orchestrator: OrchestratorAgent,
         fsm_config: FSMConfig,
+        branch_provider: BranchProvider,
+        brand: Brand | None = None,
     ) -> None:
         self._messaging_provider = messaging_provider
         self._conversation_event_repository = conversation_event_repository
@@ -70,8 +75,18 @@ class InboundMessageHandler:
         self._conversation_agent = conversation_agent
         self._orchestrator = orchestrator
         self._fsm_config = fsm_config
+        self._branch_provider = branch_provider
+        self._brand = brand
         self._guard_registry = build_default_guard_registry()
-        self._action_registry = build_default_action_registry()
+        self._action_registry = build_default_action_registry(
+            FSMActionDependencies(
+                session_repository=self._session_repository,
+                crm_outbox_repository=self._crm_outbox_repository,
+                messaging_provider=self._messaging_provider,
+                branch_provider=self._branch_provider,
+                brand=self._brand,
+            )
+        )
 
     async def handle(self, raw_payload: dict[str, object]) -> InboundHandleResult:
         try:
@@ -214,6 +229,16 @@ class InboundMessageHandler:
                     or "Un asesor te contactara pronto."
                 ),
             )
+            await self._route_handoff_to_branch(
+                inbound_event=enriched_inbound_event,
+                lead_profile=lead_profile,
+                session=updated_session,
+                conversation_id=conversation_id,
+            )
+            updated_session = await self._activate_handoff_session(
+                session=updated_session,
+                inbound_event=enriched_inbound_event,
+            )
         elif classification.intent == "unsupported":
             await self._send_unsupported_message(enriched_inbound_event)
         else:
@@ -325,9 +350,16 @@ class InboundMessageHandler:
             {
                 "phone": inbound_event.from_phone,
                 "name": lead_profile.name,
+                "lead_id": str(lead_profile.id),
+                "lead_external_crm_id": lead_profile.external_crm_id,
+                "session_id": str(session.id),
+                "session_context": dict(session.context),
+                "lead_attributes": dict(lead_profile.attributes),
                 "is_silenced": False,
                 "opt_out_detected": classification.intent == "opt_out",
                 "campaign_id": session.context.get("campaign_id"),
+                "correlation_id": inbound_event.message_id,
+                "inbound_text": inbound_event.text,
             }
         )
         return context
@@ -437,6 +469,195 @@ class InboundMessageHandler:
                 mime_type=mime_type,
             )
             return "Audio transcription pending"
+
+    async def _route_handoff_to_branch(
+        self,
+        inbound_event: InboundEvent,
+        lead_profile: LeadProfile,
+        session: Session,
+        conversation_id: UUID,
+    ) -> None:
+        branch = self._resolve_handoff_branch(lead_profile=lead_profile, session=session)
+        if branch is None:
+            logger.warning(
+                "handoff_branch_not_found",
+                lead_id=str(lead_profile.id),
+                phone=inbound_event.from_phone,
+            )
+            return
+
+        message = await self._build_handoff_notification(
+            inbound_event=inbound_event,
+            lead_profile=lead_profile,
+            conversation_id=conversation_id,
+            branch=branch,
+        )
+        for phone in branch.phones:
+            try:
+                await self._messaging_provider.send_text(
+                    to=phone,
+                    text=message,
+                    correlation_id=inbound_event.message_id,
+                )
+            except Exception:
+                logger.exception(
+                    "handoff_routing_send_failed",
+                    lead_id=str(lead_profile.id),
+                    branch_key=branch.sucursal_key,
+                    branch_phone=phone,
+                )
+
+    async def _build_handoff_notification(
+        self,
+        inbound_event: InboundEvent,
+        lead_profile: LeadProfile,
+        conversation_id: UUID,
+        branch: Branch,
+    ) -> str:
+        vehicle_interest = self._extract_handoff_field(
+            lead_profile=lead_profile,
+            keys=["vehiculo_interes", "vehiculo_previo", "vehicle_interest", "interes_modelo"],
+        )
+        summary = await self._build_conversation_summary(conversation_id=conversation_id)
+        lead_name = (
+            lead_profile.name or self._extract_push_name(inbound_event) or "Cliente sin nombre"
+        )
+
+        return (
+            "[Handoff solicitado]\n"
+            f"Sucursal: {branch.display_name} ({branch.sucursal_key})\n"
+            f"Nombre cliente: {lead_name}\n"
+            f"Telefono cliente: {inbound_event.from_phone}\n"
+            f"Vehiculo de interes: {vehicle_interest or 'No especificado'}\n"
+            f"Resumen: {summary}"
+        )
+
+    async def _build_conversation_summary(self, conversation_id: UUID) -> str:
+        events = await self._conversation_event_repository.list_by_conversation(
+            conversation_id=conversation_id,
+            limit=6,
+        )
+        fragments: list[str] = []
+        for event in events:
+            text = event.payload.get("text")
+            if isinstance(text, str) and text.strip():
+                normalized = " ".join(text.strip().split())
+                fragments.append(normalized)
+
+        if not fragments:
+            return "Sin contexto adicional."
+
+        return " | ".join(fragments[-3:])
+
+    async def _activate_handoff_session(
+        self,
+        session: Session,
+        inbound_event: InboundEvent,
+    ) -> Session:
+        now = datetime.now(UTC)
+        context = dict(session.context)
+        context["handoff"] = {
+            "active": True,
+            "activated_at": now.isoformat(),
+            "trigger_message_id": inbound_event.message_id,
+        }
+        return await self._session_repository.upsert(
+            Session(
+                id=session.id,
+                lead_id=session.lead_id,
+                current_state="handoff_active",
+                context=context,
+                created_at=session.created_at,
+                updated_at=now,
+                last_event_at=inbound_event.received_at,
+            )
+        )
+
+    def _resolve_handoff_branch(self, lead_profile: LeadProfile, session: Session) -> Branch | None:
+        branch_key = self._extract_handoff_field(
+            lead_profile=lead_profile,
+            session=session,
+            keys=["sucursal_key", "branch_key"],
+        )
+        if branch_key:
+            by_key = self._branch_provider.get_branch_by_key(branch_key)
+            if by_key is not None:
+                return by_key
+
+        centro = self._extract_handoff_field(
+            lead_profile=lead_profile,
+            session=session,
+            keys=["centro_sheet", "centro", "centro_inventario"],
+        )
+        if centro:
+            by_centro = self._branch_provider.get_branch_by_centro(centro)
+            if by_centro is not None:
+                return by_centro
+
+        city = self._extract_handoff_field(
+            lead_profile=lead_profile,
+            session=session,
+            keys=["city", "ciudad"],
+        )
+        if city:
+            by_city = self._find_branch_by_city(city)
+            if by_city is not None:
+                return by_city
+
+        branches = self._branch_provider.list_branches()
+        fallback = next(
+            (item for item in branches if item.sucursal_key.strip().casefold() == "fallback"),
+            None,
+        )
+        if fallback is not None:
+            return fallback
+        if branches:
+            return branches[0]
+        return None
+
+    def _find_branch_by_city(self, city: str) -> Branch | None:
+        normalized_city = city.strip().casefold()
+        if not normalized_city:
+            return None
+
+        for branch in self._branch_provider.list_branches():
+            centro = branch.centro_sheet.strip().casefold()
+            display_name = branch.display_name.strip().casefold()
+            if normalized_city == centro or normalized_city in display_name:
+                return branch
+        return None
+
+    def _extract_handoff_field(
+        self,
+        lead_profile: LeadProfile,
+        keys: list[str],
+        session: Session | None = None,
+    ) -> str | None:
+        candidates: list[dict[str, object]] = [lead_profile.attributes]
+        if session is not None:
+            candidates.append(session.context)
+            last_inbound = session.context.get("last_inbound_message")
+            if isinstance(last_inbound, dict):
+                candidates.append(last_inbound)
+
+        for payload in candidates:
+            for key in keys:
+                value = payload.get(key)
+                if isinstance(value, str):
+                    cleaned = value.strip()
+                    if cleaned:
+                        return cleaned
+        return None
+
+    @staticmethod
+    def _extract_push_name(inbound_event: InboundEvent) -> str | None:
+        push_name = inbound_event.raw_metadata.get("push_name")
+        if not isinstance(push_name, str):
+            return None
+        normalized = push_name.strip()
+        if not normalized:
+            return None
+        return normalized
 
     @staticmethod
     def _build_conversation_id(phone: str) -> UUID:

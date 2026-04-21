@@ -1,8 +1,10 @@
 from typing import Annotated
 
-from fastapi import Depends, Request
+from fastapi import Depends, Header, HTTPException, Request, status
 
+from adapters.branches.sheets_adapter import SheetsBranchAdapter
 from adapters.crm.monday_adapter import MondayCRMAdapter
+from adapters.inventory.sheets_adapter import SheetsInventoryAdapter
 from adapters.knowledge.pgvector_adapter import PgVectorKnowledgeAdapter
 from adapters.llm.vertex_adapter import VertexLLMAdapter
 from adapters.messaging.evolution.adapter import EvolutionMessagingAdapter
@@ -14,10 +16,13 @@ from adapters.storage.repositories.outbound_queue_repo import PostgresOutboundQu
 from adapters.storage.repositories.session_repo import PostgresSessionRepository
 from adapters.storage.repositories.silenced_repo import PostgresSilencedUserRepository
 from adapters.transcription.whisper_stub import WhisperStubTranscriptionProvider
+from core.auth.jwt_handler import verify_token
 from core.brand.schema import Brand
 from core.config import get_settings
 from core.fsm.schema import FSMConfig
+from core.ports.branch_provider import BranchProvider
 from core.ports.crm_provider import CRMProvider
+from core.ports.inventory_provider import InventoryProvider
 from core.ports.knowledge_provider import KnowledgeProvider
 from core.ports.llm_provider import LLMProvider
 from core.ports.messaging_provider import MessagingProvider
@@ -31,11 +36,63 @@ from core.ports.repositories import (
 )
 from core.ports.transcription_provider import TranscriptionProvider
 from core.services.conversation_agent import ConversationAgent
+from core.services.campaign_worker import CampaignWorker
 from core.services.dashboard_service import DashboardService
 from core.services.handoff_service import HandoffService
 from core.services.inbound_handler import InboundMessageHandler
 from core.services.orchestrator import OrchestratorAgent
+from core.services.replay_engine import ReplayEngine
 from core.services.skills import SkillRegistry
+
+
+def get_brand(request: Request) -> Brand:
+    return request.app.state.brand
+
+
+def get_current_user(
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+) -> dict[str, object]:
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="missing_authorization_header",
+        )
+    if not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid_authorization_scheme",
+        )
+    token = authorization[7:].strip()
+    return verify_token(token)
+
+
+def get_current_user_or_none(
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+) -> dict[str, object] | None:
+    if not authorization:
+        return None
+    if not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid_authorization_scheme",
+        )
+    token = authorization[7:].strip()
+    return verify_token(token)
+
+
+def require_internal_or_user(
+    x_internal_token: Annotated[str | None, Header(alias="X-Internal-Token")] = None,
+    current_user: Annotated[dict[str, object] | None, Depends(get_current_user_or_none)] = None,
+) -> dict[str, object]:
+    settings = get_settings()
+    if x_internal_token and x_internal_token == settings.internal_token:
+        return {"auth_type": "internal_token"}
+    if current_user is not None:
+        return current_user
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="missing_credentials",
+    )
 
 
 def get_messaging_provider() -> MessagingProvider:
@@ -44,6 +101,27 @@ def get_messaging_provider() -> MessagingProvider:
 
 def get_crm_provider() -> CRMProvider:
     return MondayCRMAdapter()
+
+
+def get_branch_provider() -> BranchProvider:
+    settings = get_settings()
+    return SheetsBranchAdapter(
+        csv_url=settings.branch_sheet_url,
+        cache_ttl_seconds=settings.branch_cache_ttl_seconds,
+    )
+
+
+def get_inventory_provider(
+    brand: Annotated[Brand, Depends(get_brand)],
+) -> InventoryProvider:
+    settings = get_settings()
+    csv_url = settings.inventory_sheet_url if settings.inventory_sheet_url.strip() else None
+    return SheetsInventoryAdapter(
+        csv_url=csv_url,
+        inventory_columns=brand.brand.inventory_columns,
+        fallback_products=brand.products.products,
+        cache_ttl_seconds=settings.inventory_cache_ttl_seconds,
+    )
 
 
 def get_llm_provider() -> LLMProvider:
@@ -103,6 +181,7 @@ def get_handoff_service(
 
 def get_dashboard_service(
     session_repository: Annotated[SessionRepository, Depends(get_session_repository)],
+    lead_profile_repository: Annotated[LeadProfileRepository, Depends(get_lead_profile_repository)],
     conversation_event_repository: Annotated[
         ConversationEventRepository, Depends(get_conversation_event_repository)
     ],
@@ -113,18 +192,48 @@ def get_dashboard_service(
 ) -> DashboardService:
     return DashboardService(
         session_repository=session_repository,
+        lead_profile_repository=lead_profile_repository,
         conversation_event_repository=conversation_event_repository,
         outbound_queue_repository=outbound_queue_repository,
         crm_outbox_repository=crm_outbox_repository,
     )
 
 
+def get_campaign_worker(
+    outbound_queue_repository: Annotated[
+        OutboundQueueRepository, Depends(get_outbound_queue_repository)
+    ],
+    messaging_provider: Annotated[MessagingProvider, Depends(get_messaging_provider)],
+) -> CampaignWorker:
+    settings = get_settings()
+    return CampaignWorker(
+        outbound_queue_repository=outbound_queue_repository,
+        messaging_provider=messaging_provider,
+        batch_size=settings.campaign_batch_size,
+        rate_limit_ms=settings.campaign_rate_limit_ms,
+    )
+
+
+def get_replay_engine(
+    brand: Annotated[Brand, Depends(get_brand)],
+    lead_profile_repository: Annotated[LeadProfileRepository, Depends(get_lead_profile_repository)],
+    session_repository: Annotated[SessionRepository, Depends(get_session_repository)],
+    conversation_event_repository: Annotated[
+        ConversationEventRepository, Depends(get_conversation_event_repository)
+    ],
+) -> ReplayEngine:
+    return ReplayEngine(
+        lead_profile_repository=lead_profile_repository,
+        session_repository=session_repository,
+        event_repository=conversation_event_repository,
+        fsm_config=brand.fsm,
+        handoff_keywords=brand.policies.handoff_keywords,
+        opt_out_keywords=brand.policies.opt_out_keywords,
+    )
+
+
 def get_silenced_user_repository() -> SilencedUserRepository:
     return PostgresSilencedUserRepository()
-
-
-def get_brand(request: Request) -> Brand:
-    return request.app.state.brand
 
 
 def get_fsm_config(brand: Annotated[Brand, Depends(get_brand)]) -> FSMConfig:
@@ -147,11 +256,13 @@ def get_orchestrator_agent(
 
 async def get_skill_registry(
     knowledge_provider: Annotated[KnowledgeProvider, Depends(get_knowledge_provider)],
+    inventory_provider: Annotated[InventoryProvider, Depends(get_inventory_provider)],
     messaging_provider: Annotated[MessagingProvider, Depends(get_messaging_provider)],
     brand: Annotated[Brand, Depends(get_brand)],
 ) -> SkillRegistry:
     return SkillRegistry(
         knowledge_provider=knowledge_provider,
+        inventory_provider=inventory_provider,
         messaging_provider=messaging_provider,
         brand=brand,
     )
@@ -190,6 +301,8 @@ def get_inbound_message_handler(
     conversation_agent: Annotated[ConversationAgent, Depends(get_conversation_agent)],
     orchestrator: Annotated[OrchestratorAgent, Depends(get_orchestrator_agent)],
     fsm_config: Annotated[FSMConfig, Depends(get_fsm_config)],
+    branch_provider: Annotated[BranchProvider, Depends(get_branch_provider)],
+    brand: Annotated[Brand, Depends(get_brand)],
 ) -> InboundMessageHandler:
     return InboundMessageHandler(
         messaging_provider=messaging_provider,
@@ -202,4 +315,6 @@ def get_inbound_message_handler(
         conversation_agent=conversation_agent,
         orchestrator=orchestrator,
         fsm_config=fsm_config,
+        branch_provider=branch_provider,
+        brand=brand,
     )

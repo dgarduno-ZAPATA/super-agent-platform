@@ -37,6 +37,8 @@ logs/
 .env.*
 !.env.example
 .env.local
+.env.production
+*.env
 
 # IDEs and editors
 .vscode/

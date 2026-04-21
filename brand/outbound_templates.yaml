@@ -1,19 +1,28 @@
 campaigns:
-  - key: reactivation_used_trucks
-    template_text: "Hola, soy Estefania de SelecTrucks Zapata. Vi que antes te intereso uno de nuestros camiones usados. Quiero compartirte opciones disponibles esta semana y planes de financiamiento. Te puedo ayudar?"
+  - key: reactivacion_general
+    template_text: "Hola {nombre}, soy Raúl de SelecTrucks. Hace un tiempo mostraste interés en nuestros camiones. Tenemos unidades nuevas en inventario que podrían interesarte. ¿Te gustaría que te comparta opciones?"
     window_start: "09:00"
     window_end: "18:30"
     cadence_hours: 24
     audience_filter:
       source: crm
-      interest: camiones_usados
+      interest: reactivacion
       last_stage: nurture
-  - key: inventory_follow_up
-    template_text: "Hola, soy Estefania de SelecTrucks Zapata. Ya tengo nuevas unidades Freightliner y International seminuevas que podrian ajustarse a tu operacion. Quieres que te mande opciones?"
+  - key: reactivacion_vehiculo
+    template_text: "Hola {nombre}, soy Raúl de SelecTrucks. Vi que en su momento te interesó un {vehiculo_previo}. Actualmente tenemos opciones similares disponibles. ¿Quieres que te mande información?"
     window_start: "10:00"
     window_end: "17:00"
     cadence_hours: 48
     audience_filter:
-      source: whatsapp
-      interest: tractocamion
+      source: crm
+      interest: vehiculo_previo
       last_stage: contacted
+  - key: reactivacion_precio
+    template_text: "Hola {nombre}, soy Raúl de SelecTrucks. Tenemos promociones especiales en unidades seminuevas este mes. ¿Te interesa que te comparta las opciones disponibles?"
+    window_start: "10:00"
+    window_end: "18:30"
+    cadence_hours: 24
+    audience_filter:
+      source: crm
+      interest: precio
+      last_stage: nurture

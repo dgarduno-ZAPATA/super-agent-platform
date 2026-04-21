@@ -11,12 +11,22 @@ class StrictConfigModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
 
+class InventoryColumnsConfig(StrictConfigModel):
+    name: str = "nombre"
+    description: str = "descripcion"
+    price: str = "precio"
+    availability: str = "disponible"
+    category: str = "categoria"
+    sku: str = "sku"
+
+
 class BrandConfig(StrictConfigModel):
     name: str
     display_name: str
     default_locale: str
     timezone: str
     primary_color: str
+    inventory_columns: InventoryColumnsConfig = Field(default_factory=InventoryColumnsConfig)
 
 
 class FunnelStateConfig(StrictConfigModel):

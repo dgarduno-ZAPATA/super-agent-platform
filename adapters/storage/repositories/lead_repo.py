@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from adapters.storage.db import session_scope
@@ -31,6 +31,14 @@ def _to_domain(model: LeadProfileModel) -> LeadProfile:
 
 
 class PostgresLeadProfileRepository(LeadProfileRepository):
+    async def get_by_id(self, lead_id: UUID) -> LeadProfile | None:
+        async with session_scope() as session:
+            statement = select(LeadProfileModel).where(LeadProfileModel.id == lead_id)
+            result = await session.execute(statement)
+            model = result.scalar_one_or_none()
+
+        return None if model is None else _to_domain(model)
+
     async def get_by_phone(self, phone: str) -> LeadProfile | None:
         async with session_scope() as session:
             statement = select(LeadProfileModel).where(LeadProfileModel.phone == phone)
@@ -84,3 +92,35 @@ class PostgresLeadProfileRepository(LeadProfileRepository):
             models = result.scalars().all()
 
         return [_to_domain(model) for model in models]
+
+    async def count_total(self) -> int:
+        async with session_scope() as session:
+            statement = select(func.count()).select_from(LeadProfileModel)
+            result = await session.execute(statement)
+            return int(result.scalar_one())
+
+    async def count_created_since(self, since: datetime) -> int:
+        async with session_scope() as session:
+            statement = (
+                select(func.count())
+                .select_from(LeadProfileModel)
+                .where(LeadProfileModel.created_at >= since)
+            )
+            result = await session.execute(statement)
+            return int(result.scalar_one())
+
+    async def count_grouped_by_stage(self) -> dict[str, int]:
+        stage_expr = func.coalesce(
+            LeadProfileModel.attributes.op("->>")("crm_stage"),
+            LeadProfileModel.attributes.op("->>")("stage"),
+            "unknown",
+        )
+        async with session_scope() as session:
+            statement = (
+                select(stage_expr.label("stage"), func.count().label("count"))
+                .select_from(LeadProfileModel)
+                .group_by(stage_expr)
+                .order_by(stage_expr.asc())
+            )
+            result = await session.execute(statement)
+            return {stage: int(count) for stage, count in result.all()}

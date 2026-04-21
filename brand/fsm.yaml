@@ -13,6 +13,12 @@ states:
           - log_transition
           - update_crm_stage
       - target: greeting
+        event: message_received
+        guard: is_not_silenced
+        actions:
+          - log_transition
+          - update_crm_stage
+      - target: greeting
         event: campaign_reply_received
         guard: is_not_silenced
         actions:
@@ -29,6 +35,11 @@ states:
         guard: opt_out_detected
         actions:
           - log_transition
+      - target: closed
+        event: opt_out
+        guard: always
+        actions:
+          - log_transition
 
   greeting:
     description: Primer contacto o reactivacion de la conversacion.
@@ -43,6 +54,11 @@ states:
         guard: is_not_silenced
         actions:
           - log_transition
+      - target: qualification
+        event: message_received
+        guard: is_not_silenced
+        actions:
+          - log_transition
       - target: handoff_pending
         event: handoff_requested
         guard: always
@@ -52,6 +68,11 @@ states:
       - target: cooldown
         event: opt_out_detected
         guard: opt_out_detected
+        actions:
+          - log_transition
+      - target: closed
+        event: opt_out
+        guard: always
         actions:
           - log_transition
 
@@ -90,6 +111,11 @@ states:
         guard: opt_out_detected
         actions:
           - log_transition
+      - target: closed
+        event: opt_out
+        guard: always
+        actions:
+          - log_transition
 
   qualification:
     description: Validacion de viabilidad del lead.
@@ -124,6 +150,11 @@ states:
       - target: cooldown
         event: opt_out_detected
         guard: opt_out_detected
+        actions:
+          - log_transition
+      - target: closed
+        event: opt_out
+        guard: always
         actions:
           - log_transition
 
@@ -162,6 +193,11 @@ states:
         guard: opt_out_detected
         actions:
           - log_transition
+      - target: closed
+        event: opt_out
+        guard: always
+        actions:
+          - log_transition
 
   document_delivery:
     description: Entrega de fichas tecnicas, corridas o documentos.
@@ -191,6 +227,11 @@ states:
       - target: cooldown
         event: opt_out_detected
         guard: opt_out_detected
+        actions:
+          - log_transition
+      - target: closed
+        event: opt_out
+        guard: always
         actions:
           - log_transition
 
@@ -223,6 +264,11 @@ states:
         guard: opt_out_detected
         actions:
           - log_transition
+      - target: closed
+        event: opt_out
+        guard: always
+        actions:
+          - log_transition
 
   appointment_flow:
     description: Flujo para agendar cita, llamada o visita.
@@ -242,6 +288,11 @@ states:
       - target: cooldown
         event: opt_out_detected
         guard: opt_out_detected
+        actions:
+          - log_transition
+      - target: closed
+        event: opt_out
+        guard: always
         actions:
           - log_transition
       - target: closed
@@ -265,6 +316,11 @@ states:
         guard: always
         actions:
           - log_transition
+      - target: handoff_active
+        event: agent_took_control
+        guard: always
+        actions:
+          - log_transition
       - target: cooldown
         event: opt_out_detected
         guard: opt_out_detected
@@ -272,6 +328,11 @@ states:
           - log_transition
       - target: cooldown
         event: timeout
+        guard: always
+        actions:
+          - log_transition
+      - target: closed
+        event: opt_out
         guard: always
         actions:
           - log_transition
@@ -289,6 +350,11 @@ states:
         guard: always
         actions:
           - log_transition
+      - target: qualification
+        event: agent_released_control
+        guard: always
+        actions:
+          - log_transition
       - target: closed
         event: timeout
         guard: always
@@ -297,6 +363,11 @@ states:
       - target: cooldown
         event: opt_out_detected
         guard: opt_out_detected
+        actions:
+          - log_transition
+      - target: closed
+        event: opt_out
+        guard: always
         actions:
           - log_transition
 
@@ -323,6 +394,11 @@ states:
         guard: opt_out_detected
         actions:
           - log_transition
+      - target: closed
+        event: opt_out
+        guard: always
+        actions:
+          - log_transition
 
   closed:
     description: Conversacion finalizada.
@@ -342,3 +418,8 @@ states:
         actions:
           - log_transition
           - notify_agent
+      - target: closed
+        event: opt_out
+        guard: always
+        actions:
+          - log_transition
