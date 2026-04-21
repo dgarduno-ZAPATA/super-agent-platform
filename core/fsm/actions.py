@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from uuid import UUID
-
-from collections.abc import Awaitable, Callable
 
 import structlog
 
@@ -82,7 +81,9 @@ def _extract_nested_string(context: dict[str, object], keys: list[str]) -> str |
     return None
 
 
-def _resolve_crm_stage(context: dict[str, object], dependencies: FSMActionDependencies) -> str | None:
+def _resolve_crm_stage(
+    context: dict[str, object], dependencies: FSMActionDependencies
+) -> str | None:
     explicit_stage = _coerce_str(context.get("stage")) or _coerce_str(context.get("crm_stage"))
     if explicit_stage is not None:
         return explicit_stage
@@ -153,7 +154,9 @@ def _resolve_product(
             if product.sku.casefold() == sku_hint.casefold():
                 return product
 
-    name_hint = _extract_nested_string(context, ["product_name", "vehiculo_interes", "vehicle_interest"])
+    name_hint = _extract_nested_string(
+        context, ["product_name", "vehiculo_interes", "vehicle_interest"]
+    )
     if name_hint is not None:
         lowered = name_hint.casefold()
         for product in dependencies.brand.products.products:
@@ -233,13 +236,15 @@ def build_default_action_registry(
             return
 
         aggregate_id = _coerce_str(context.get("lead_id")) or lead_id
+        old_state = _coerce_str(context.get("old_state")) or "unknown"
+        new_state = _coerce_str(context.get("new_state")) or "unknown"
         await deps.crm_outbox_repository.enqueue_operation(
             aggregate_id=aggregate_id,
             operation="change_stage",
             payload={
                 "lead_id": lead_id,
                 "new_stage": stage,
-                "reason": f"fsm:{_coerce_str(context.get('old_state')) or 'unknown'}->{_coerce_str(context.get('new_state')) or 'unknown'}",
+                "reason": f"fsm:{old_state}->{new_state}",
             },
         )
         logger.info("fsm_update_crm_stage_done", lead_id=lead_id, stage=stage)

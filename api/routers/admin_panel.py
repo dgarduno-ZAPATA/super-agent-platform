@@ -5,7 +5,7 @@ import io
 import json
 import os
 from collections.abc import Sequence
-from typing import Any
+from typing import Annotated, Any
 
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -98,9 +98,9 @@ async def _complete_with_anthropic(prompt: str) -> str:
 
 @router.post("/admin/generate-templates", response_model=None)
 async def generate_templates_csv(
-    file: UploadFile = File(...),
-    current_user: dict[str, object] = Depends(get_current_user),
-    llm_provider: LLMProvider = Depends(get_llm_provider),
+    file: Annotated[UploadFile, File(...)],
+    current_user: Annotated[dict[str, object], Depends(get_current_user)],
+    llm_provider: Annotated[LLMProvider, Depends(get_llm_provider)],
 ) -> StreamingResponse | JSONResponse:
     del current_user
     if not file.filename or not file.filename.lower().endswith(".csv"):

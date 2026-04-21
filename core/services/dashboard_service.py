@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from core.ports.repositories import (
     ConversationEventRepository,
@@ -37,14 +38,20 @@ class DashboardService:
             excluded_states={"closed"},
         )
         pending_handoffs = await self._session_repository.count_by_state("handoff_pending")
-        sessions_in_handoff = await self._safe_metric(self._session_repository.count_human_control_sessions)
-        sessions_by_fsm_state = await self._safe_metric(self._session_repository.count_grouped_by_state)
+        sessions_in_handoff = await self._safe_metric(
+            self._session_repository.count_human_control_sessions
+        )
+        sessions_by_fsm_state = await self._safe_metric(
+            self._session_repository.count_grouped_by_state
+        )
 
         total_leads = await self._safe_metric(self._lead_profile_repository.count_total)
         new_leads_today = await self._safe_metric(
             lambda: self._lead_profile_repository.count_created_since(start_of_day)
         )
-        leads_by_stage = await self._safe_metric(self._lead_profile_repository.count_grouped_by_stage)
+        leads_by_stage = await self._safe_metric(
+            self._lead_profile_repository.count_grouped_by_stage
+        )
 
         outbound_counts = await self._outbound_queue_repository.count_by_priority_and_status(
             priorities={0, 1},
@@ -67,14 +74,14 @@ class DashboardService:
             )
         )
         avg_response_time_minutes = await self._safe_metric(
-            lambda: self._conversation_event_repository.average_response_time_minutes_since(start_of_day)
+            lambda: self._conversation_event_repository.average_response_time_minutes_since(
+                start_of_day
+            )
         )
 
         crm_sync_pending = await self._safe_metric(self._crm_outbox_repository.count_pending_items)
         crm_sync_errors = await self._crm_outbox_repository.count_dlq_items()
-        total_messages_last_24h = await self._conversation_event_repository.count_since(
-            since_24h
-        )
+        total_messages_last_24h = await self._conversation_event_repository.count_since(since_24h)
 
         return {
             "active_sessions": active_sessions,

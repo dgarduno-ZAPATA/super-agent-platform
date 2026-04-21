@@ -4,9 +4,9 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI, Request
 
+from api.middleware.correlation import CorrelationMiddleware
 from api.routers.admin_panel import router as admin_router
 from api.routers.auth import router as auth_router
-from api.middleware.correlation import CorrelationMiddleware
 from api.routers.campaigns import router as campaigns_router
 from api.routers.conversations import router as conversations_router
 from api.routers.dashboard import router as dashboard_router
@@ -76,7 +76,8 @@ def create_app() -> FastAPI:
                 evolution_api_key_set=bool(settings.evolution_api_key.strip()),
             )
             raise RuntimeError(
-                "JWT_SECRET_KEY, ADMIN_PASSWORD, INTERNAL_TOKEN and EVOLUTION_API_KEY must be configured"
+                "JWT_SECRET_KEY, ADMIN_PASSWORD, INTERNAL_TOKEN and "
+                "EVOLUTION_API_KEY must be configured"
             )
 
         application.state.brand = brand

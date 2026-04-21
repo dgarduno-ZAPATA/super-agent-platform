@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -187,7 +186,12 @@ def _build_brand() -> Brand:
             "fsm": {
                 "initial_state": "idle",
                 "states": {
-                    "idle": {"description": "idle", "allowed_transitions": [], "on_enter": [], "on_exit": []}
+                    "idle": {
+                        "description": "idle",
+                        "allowed_transitions": [],
+                        "on_enter": [],
+                        "on_exit": [],
+                    }
                 },
             },
             "prompt": "Prompt de prueba",

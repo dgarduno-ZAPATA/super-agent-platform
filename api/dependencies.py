@@ -35,8 +35,8 @@ from core.ports.repositories import (
     SilencedUserRepository,
 )
 from core.ports.transcription_provider import TranscriptionProvider
-from core.services.conversation_agent import ConversationAgent
 from core.services.campaign_worker import CampaignWorker
+from core.services.conversation_agent import ConversationAgent
 from core.services.dashboard_service import DashboardService
 from core.services.handoff_service import HandoffService
 from core.services.inbound_handler import InboundMessageHandler

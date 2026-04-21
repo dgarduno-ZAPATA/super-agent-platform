@@ -141,7 +141,8 @@ class PostgresConversationEventRepository(ConversationEventRepository):
                     func.avg(
                         func.extract(
                             "epoch",
-                            outbound_subquery.c.first_outbound_at - inbound_subquery.c.first_inbound_at,
+                            outbound_subquery.c.first_outbound_at
+                            - inbound_subquery.c.first_inbound_at,
                         )
                         / 60.0
                     )

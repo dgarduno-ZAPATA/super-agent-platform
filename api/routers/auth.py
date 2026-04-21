@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from datetime import UTC, datetime, timedelta
-from typing import Deque
 
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
@@ -12,7 +11,7 @@ from core.config import get_settings
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
-_ATTEMPTS_BY_IP: dict[str, Deque[datetime]] = defaultdict(deque)
+_ATTEMPTS_BY_IP: dict[str, deque[datetime]] = defaultdict(deque)
 _MAX_ATTEMPTS_PER_MINUTE = 5
 _WINDOW = timedelta(minutes=1)
 

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from core.brand.schema import InventoryColumnsConfig, ProductConfig
 from adapters.inventory.sheets_adapter import SheetsInventoryAdapter
+from core.brand.schema import InventoryColumnsConfig, ProductConfig
 
 
 def _fallback_products() -> list[ProductConfig]:

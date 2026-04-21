@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from core.domain.conversation_event import ConversationEvent
@@ -10,7 +9,11 @@ from core.domain.session import Session
 from core.fsm.actions import ActionRegistry
 from core.fsm.engine import FSMEngine
 from core.fsm.schema import FSMConfig
-from core.ports.repositories import ConversationEventRepository, LeadProfileRepository, SessionRepository
+from core.ports.repositories import (
+    ConversationEventRepository,
+    LeadProfileRepository,
+    SessionRepository,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,8 +37,12 @@ class ReplayEngine:
         self._session_repository = session_repository
         self._event_repository = event_repository
         self._fsm_config = fsm_config
-        self._handoff_keywords = [item.strip().casefold() for item in (handoff_keywords or []) if item.strip()]
-        self._opt_out_keywords = [item.strip().casefold() for item in (opt_out_keywords or []) if item.strip()]
+        self._handoff_keywords = [
+            item.strip().casefold() for item in (handoff_keywords or []) if item.strip()
+        ]
+        self._opt_out_keywords = [
+            item.strip().casefold() for item in (opt_out_keywords or []) if item.strip()
+        ]
 
     async def load_conversation(self, lead_id: UUID) -> ReplayConversationData:
         lead = await self._lead_profile_repository.get_by_id(lead_id)
@@ -97,7 +104,11 @@ class ReplayEngine:
             last = data.events[-1].created_at
             duration_minutes = int((last - first).total_seconds() / 60)
 
-        current_fsm_state = data.session.current_state if data.session is not None else self._fsm_config.initial_state
+        current_fsm_state = (
+            data.session.current_state
+            if data.session is not None
+            else self._fsm_config.initial_state
+        )
         human_in_control = bool(
             data.session is not None
             and (

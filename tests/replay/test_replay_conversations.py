@@ -228,7 +228,12 @@ def _build_fsm_config() -> FSMConfig:
                 "idle": {
                     "description": "idle",
                     "allowed_transitions": [
-                        {"target": "greeting", "event": "user_message", "guard": "always", "actions": []},
+                        {
+                            "target": "greeting",
+                            "event": "user_message",
+                            "guard": "always",
+                            "actions": [],
+                        },
                         {
                             "target": "handoff_pending",
                             "event": "handoff_requested",
@@ -263,12 +268,14 @@ def _build_fsm_config() -> FSMConfig:
     )
 
 
-async def _run_sequence() -> tuple[
-    ReplayConversationEventRepository,
-    ReplayLeadProfileRepository,
-    ReplaySessionRepository,
-    UUID,
-]:
+async def _run_sequence() -> (
+    tuple[
+        ReplayConversationEventRepository,
+        ReplayLeadProfileRepository,
+        ReplaySessionRepository,
+        UUID,
+    ]
+):
     event_repo = ReplayConversationEventRepository()
     lead_repo = ReplayLeadProfileRepository()
     session_repo = ReplaySessionRepository()

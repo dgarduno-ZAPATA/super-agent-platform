@@ -97,7 +97,9 @@ class CampaignWorker:
 
     @classmethod
     def _render_message(cls, payload: dict[str, object]) -> str:
-        template = cls._read_string(payload.get("template")) or cls._read_string(payload.get("text"))
+        template = cls._read_string(payload.get("template")) or cls._read_string(
+            payload.get("text")
+        )
         if template is None:
             return ""
 
