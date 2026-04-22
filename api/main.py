@@ -1,10 +1,11 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 import logging
+from typing import Annotated
 
 import sentry_sdk
 import structlog
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Header, HTTPException, Request, status
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
@@ -136,6 +137,17 @@ def create_app() -> FastAPI:
     async def brand_info() -> dict[str, str]:
         logger.info("brand_info_requested", service=SERVICE_NAME)
         return {"name": app.state.brand.brand.display_name}
+
+    @app.get("/sentry-debug")
+    async def sentry_debug(
+        x_internal_token: Annotated[str | None, Header(alias="X-Internal-Token")] = None,
+    ) -> dict[str, str]:
+        if x_internal_token != settings.internal_token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="missing_or_invalid_internal_token",
+            )
+        raise RuntimeError("sentry_debug_triggered")
 
     return app
 
