@@ -22,10 +22,15 @@ class InventoryColumnsConfig(StrictConfigModel):
 
 class BrandConfig(StrictConfigModel):
     name: str
+    slug: str = "selectrucks-zapata"
     display_name: str
     default_locale: str
     timezone: str
+    logo_url: str = ""
     primary_color: str
+    accent_color: str = "#2e86c1"
+    support_phone: str = ""
+    admin_title: str = "Panel de Raúl"
     inventory_columns: InventoryColumnsConfig = Field(default_factory=InventoryColumnsConfig)
 
 

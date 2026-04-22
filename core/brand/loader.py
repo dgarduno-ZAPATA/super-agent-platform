@@ -18,6 +18,7 @@ from core.brand.schema import (
     ProductsConfig,
 )
 from core.fsm.schema import FSMConfig
+from core.config import get_settings
 
 
 class BrandValidationError(ValueError):
@@ -92,3 +93,8 @@ def load_brand(path: Path) -> Brand:
         fallback_messages=fallback_messages,
         prompt=prompt,
     )
+
+
+def load_brand_config() -> Brand:
+    settings = get_settings()
+    return load_brand(settings.brand_path)

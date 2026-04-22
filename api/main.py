@@ -5,12 +5,13 @@ from typing import Annotated
 
 import sentry_sdk
 import structlog
-from fastapi import FastAPI, Header, HTTPException, Request, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from api.middleware.correlation import CorrelationMiddleware
+from api.dependencies import get_current_user
 from api.routers.admin_panel import router as admin_router
 from api.routers.auth import router as auth_router
 from api.routers.campaigns import router as campaigns_router
@@ -19,7 +20,7 @@ from api.routers.dashboard import router as dashboard_router
 from api.routers.knowledge import router as knowledge_router
 from api.routers.leads import router as leads_router
 from api.routers.webhook import router as webhook_router
-from core.brand.loader import BrandValidationError, load_brand
+from core.brand.loader import BrandValidationError, load_brand_config
 from core.config import get_settings
 from core.observability.logging import setup_logging
 from infra.scheduler import start_campaign_scheduler, stop_campaign_scheduler
@@ -78,7 +79,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         try:
-            brand = load_brand(settings.brand_path)
+            brand = load_brand_config()
         except BrandValidationError:
             logger.exception(
                 "brand_validation_failed",
@@ -141,6 +142,22 @@ def create_app() -> FastAPI:
     async def brand_info() -> dict[str, str]:
         logger.info("brand_info_requested", service=SERVICE_NAME)
         return {"name": app.state.brand.brand.display_name}
+
+    @app.get("/brand/config")
+    async def brand_config(
+        current_user: Annotated[dict[str, object], Depends(get_current_user)],
+    ) -> dict[str, str]:
+        del current_user
+        brand = app.state.brand.brand
+        return {
+            "name": brand.name,
+            "slug": brand.slug,
+            "logo_url": brand.logo_url,
+            "primary_color": brand.primary_color,
+            "accent_color": brand.accent_color,
+            "admin_title": brand.admin_title,
+            "support_phone": brand.support_phone,
+        }
 
     @app.get("/sentry-debug")
     async def sentry_debug(

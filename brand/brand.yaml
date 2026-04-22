@@ -1,8 +1,13 @@
-name: raul_rodriguez
+name: "SelecTrucks Zapata"
+slug: "selectrucks-zapata"
 display_name: "Raúl Rodríguez"
 default_locale: es_MX
 timezone: America/Mexico_City
-primary_color: "#005BAC"
+logo_url: ""
+primary_color: "#1a5276"
+accent_color: "#2e86c1"
+support_phone: ""
+admin_title: "Panel de Raúl"
 inventory_columns:
   name: nombre
   description: descripcion

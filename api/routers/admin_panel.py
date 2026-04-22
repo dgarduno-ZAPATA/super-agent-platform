@@ -194,14 +194,16 @@ async def admin_panel() -> HTMLResponse:
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Raúl Bot — Panel Admin</title>
+  <title>Panel Admin</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap');
     :root {
+      --brand-primary: #1a5276;
+      --brand-accent: #2e86c1;
       --bg: #0f172a;
       --card: #1e293b;
       --border: #334155;
-      --accent: #22d3ee;
+      --accent: var(--brand-accent);
       --text: #e2e8f0;
       --muted: #94a3b8;
       --danger: #ef4444;
@@ -1440,12 +1442,14 @@ async def admin_panel() -> HTMLResponse:
       font-size: 0.75rem;
     }
     :root {
+      --brand-primary: #1a5276;
+      --brand-accent: #2e86c1;
       --bg-base: #080c14;
       --bg-surface: #0d1420;
       --bg-elevated: #131d2e;
       --border: #1e2d42;
       --border-bright: #2a3f5c;
-      --accent: #00d4ff;
+      --accent: var(--brand-accent);
       --accent-dim: #0099bb;
       --success: #00e676;
       --warning: #ffab00;
@@ -1551,7 +1555,7 @@ async def admin_panel() -> HTMLResponse:
     .conv-mini-value { font-size: 1.1rem; }
 
     .navbar {
-      background: var(--bg-base);
+      background: var(--brand-primary);
       border-bottom: 1px solid var(--border);
       padding: 0 24px;
       position: sticky;
@@ -1585,6 +1589,13 @@ async def admin_panel() -> HTMLResponse:
       letter-spacing: 1.2px;
       font-size: 11px;
       font-weight: 500;
+    }
+    .brand-logo {
+      width: 30px;
+      height: 30px;
+      border-radius: 6px;
+      object-fit: cover;
+      border: 1px solid var(--border-bright);
     }
     .nav-status {
       display: inline-flex;
@@ -2447,10 +2458,10 @@ async def admin_panel() -> HTMLResponse:
 <body>
   <div id="login-screen" class="center-wrap">
     <div class="card login-card">
-      <h2 class="login-logo">RAÚL BOT</h2>
+      <h2 class="login-logo brand-name">Marca</h2>
       <p class="login-subtitle">SISTEMA DE CONTROL OPERATIVO</p>
       <h3 class="title">Acceso Administrador</h3>
-      <p class="subtitle">Inicia sesión para acceder al panel de Raúl Bot.</p>
+      <p class="subtitle">Inicia sesión para acceder al panel de <span class="brand-admin-title">Panel Admin</span>.</p>
       <form id="login-form">
         <label for="username">Usuario</label>
         <input id="username" name="username" type="text" autocomplete="username" required />
@@ -2466,8 +2477,10 @@ async def admin_panel() -> HTMLResponse:
     <header class="navbar">
       <div class="nav-top">
         <div class="nav-brand">
-          <span class="brand-main">RAÚL BOT</span>
-          <span class="brand-sub">// PANEL OPERATIVO</span>
+          <img id="brand-logo" class="brand-logo hidden" alt="Logo de marca" />
+          <span class="brand-main brand-name">Marca</span>
+          <span class="brand-sub brand-admin-title">Panel Admin</span>
+          <span id="brand-support-phone" class="brand-sub hidden"></span>
         </div>
         <div class="nav-status">
           <span class="status-dot" role="status" aria-label="Sistema operativo"></span>
@@ -2816,8 +2829,16 @@ async def admin_panel() -> HTMLResponse:
     const TEMPLATE_DEBOUNCE_MS = 300;
     const MONITOR_REFRESH_MS = 10000;
     const MONITOR_GAUGE_CIRCUMFERENCE = 439.82;
-    const TEMPLATE_DEFAULT_COMPANY = "Selectrucks Zapata";
     const TEMPLATE_DEFAULT_BOT_NAME = "Raúl Rodríguez";
+    const BRAND_DEFAULTS = {
+      name: "Marca",
+      slug: "brand",
+      logo_url: "",
+      primary_color: "#1a5276",
+      accent_color: "#2e86c1",
+      admin_title: "Panel Admin",
+      support_phone: "",
+    };
 
     const loginScreen = document.getElementById("login-screen");
     const panelScreen = document.getElementById("panel-screen");
@@ -2917,6 +2938,10 @@ async def admin_panel() -> HTMLResponse:
     const knowledgeStatus = document.getElementById("knowledge-status");
     const knowledgeSourcesList = document.getElementById("knowledge-sources-list");
     const navClock = document.getElementById("nav-clock");
+    const brandLogo = document.getElementById("brand-logo");
+    const brandSupportPhone = document.getElementById("brand-support-phone");
+    const brandNameNodes = Array.from(document.querySelectorAll(".brand-name"));
+    const brandAdminTitleNodes = Array.from(document.querySelectorAll(".brand-admin-title"));
 
     let currentTab = "dashboard";
     let dashboardRefreshTimer = null;
@@ -2933,6 +2958,7 @@ async def admin_panel() -> HTMLResponse:
     let csvgenSelectedFile = null;
     let csvgenDetectedColumns = null;
     let csvgenGeneratedBlob = null;
+    let brandConfig = { ...BRAND_DEFAULTS };
 
     const templateCampaignExamples = {
       lost: `[Hola|Buenas|Qué tal] {nombre}, [te escribo|te contacto] de {company_name}.
@@ -3050,6 +3076,55 @@ con [tu unidad|el {vehiculo}]?`,
         throw new Error("unauthorized");
       }
       return response;
+    }
+
+    function applyBrandConfig(brand) {
+      brandConfig = { ...BRAND_DEFAULTS, ...(brand || {}) };
+
+      for (const node of brandNameNodes) {
+        node.textContent = brandConfig.name || BRAND_DEFAULTS.name;
+      }
+      for (const node of brandAdminTitleNodes) {
+        node.textContent = brandConfig.admin_title || BRAND_DEFAULTS.admin_title;
+      }
+      document.title = brandConfig.admin_title || brandConfig.name || "Panel Admin";
+
+      document.documentElement.style.setProperty("--brand-primary", brandConfig.primary_color || BRAND_DEFAULTS.primary_color);
+      document.documentElement.style.setProperty("--brand-accent", brandConfig.accent_color || BRAND_DEFAULTS.accent_color);
+      document.documentElement.style.setProperty("--accent", brandConfig.accent_color || BRAND_DEFAULTS.accent_color);
+
+      if (brandLogo) {
+        if (brandConfig.logo_url) {
+          brandLogo.src = brandConfig.logo_url;
+          brandLogo.classList.remove("hidden");
+        } else {
+          brandLogo.classList.add("hidden");
+          brandLogo.removeAttribute("src");
+        }
+      }
+
+      if (brandSupportPhone) {
+        if (brandConfig.support_phone) {
+          brandSupportPhone.textContent = `Soporte: ${brandConfig.support_phone}`;
+          brandSupportPhone.classList.remove("hidden");
+        } else {
+          brandSupportPhone.textContent = "";
+          brandSupportPhone.classList.add("hidden");
+        }
+      }
+    }
+
+    async function loadBrandConfig() {
+      try {
+        const response = await apiFetch("/brand/config", { method: "GET" });
+        if (!response.ok) {
+          throw new Error(`http_${response.status}`);
+        }
+        const brand = await response.json();
+        applyBrandConfig(brand);
+      } catch (error) {
+        applyBrandConfig(BRAND_DEFAULTS);
+      }
     }
 
     function setDashboardLoading(isLoading) {
@@ -3205,7 +3280,7 @@ con [tu unidad|el {vehiculo}]?`,
         nombre: templateTestName.value || "Carlos Mendoza",
         vehiculo: templateTestVehicle.value || "Freightliner Cascadia 2020",
         bot_name: TEMPLATE_DEFAULT_BOT_NAME,
-        company_name: TEMPLATE_DEFAULT_COMPANY,
+        company_name: brandConfig.name || BRAND_DEFAULTS.name,
         sucursal: templateTestBranch.value || "Querétaro",
         notas: templateTestNotes.value || "",
       };
@@ -4802,6 +4877,7 @@ con [tu unidad|el {vehiculo}]?`,
         }
 
         setToken(payload.access_token);
+        await loadBrandConfig();
         showPanel();
         setActiveTab("dashboard");
         showToast("success", "Sesión iniciada correctamente");
@@ -4862,10 +4938,12 @@ con [tu unidad|el {vehiculo}]?`,
 
       const token = getToken();
       if (!token) {
+        applyBrandConfig(BRAND_DEFAULTS);
         showLogin();
         return;
       }
 
+      await loadBrandConfig();
       showPanel();
       setActiveTab("dashboard");
       showToast("info", "Sesión restaurada");
