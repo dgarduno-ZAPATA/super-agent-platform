@@ -281,3 +281,19 @@ class AuditLogModel(Base):
         Index("idx_audit_log_timestamp", "timestamp"),
         Index("idx_audit_log_action", "action"),
     )
+
+
+class LoginAttemptModel(Base):
+    __tablename__ = "login_attempts"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    ip_address: Mapped[str] = mapped_column(Text, nullable=False)
+    username: Mapped[str | None] = mapped_column(Text)
+    attempted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+    success: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+
+    __table_args__ = (Index("idx_login_attempts_ip_time", "ip_address", "attempted_at"),)

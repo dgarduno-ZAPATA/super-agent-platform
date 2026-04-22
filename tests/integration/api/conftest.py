@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 
 from adapters.storage import db as db_module
+from api.routers import auth as auth_router
 from api.main import create_app
 from core.config import get_settings
 
@@ -71,6 +72,7 @@ def clean_webhook_tables(async_engine_for_test: AsyncEngine) -> None:
                 "crm_outbox",
                 "knowledge_chunks",
                 "knowledge_sources",
+                "login_attempts",
                 "audit_log",
                 "conversation_events",
                 "outbound_queue",
@@ -91,6 +93,7 @@ def set_test_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("EVOLUTION_API_KEY", "test-evolution-key")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
     get_settings.cache_clear()
+    auth_router._ATTEMPTS_BY_IP.clear()
 
 
 @pytest.fixture

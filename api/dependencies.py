@@ -17,6 +17,7 @@ from adapters.storage.repositories.crm_outbox_repo import PostgresCRMOutboxRepos
 from adapters.storage.repositories.audit_log_repo import PostgresAuditLogRepository
 from adapters.storage.repositories.event_repo import PostgresConversationEventRepository
 from adapters.storage.repositories.lead_repo import PostgresLeadProfileRepository
+from adapters.storage.repositories.login_attempt_repo import PostgresLoginAttemptRepository
 from adapters.storage.repositories.knowledge_repo import PostgresKnowledgeRepository
 from adapters.storage.repositories.outbound_queue_repo import PostgresOutboundQueueRepository
 from adapters.storage.repositories.session_repo import PostgresSessionRepository
@@ -46,6 +47,7 @@ from core.services.conversation_agent import ConversationAgent
 from core.services.dashboard_service import DashboardService
 from core.services.handoff_service import HandoffService
 from core.services.knowledge_ingestion_service import KnowledgeIngestionService
+from core.services.login_attempt_service import LoginAttemptService
 from core.services.image_analysis_service import ImageAnalysisService
 from core.services.inbound_handler import InboundMessageHandler
 from core.services.orchestrator import OrchestratorAgent
@@ -182,6 +184,18 @@ def get_audit_log_service(
     ],
 ) -> AuditLogService:
     return AuditLogService(repo=audit_log_repository)
+
+
+def get_login_attempt_repository() -> PostgresLoginAttemptRepository:
+    return PostgresLoginAttemptRepository()
+
+
+def get_login_attempt_service(
+    login_attempt_repository: Annotated[
+        PostgresLoginAttemptRepository, Depends(get_login_attempt_repository)
+    ],
+) -> LoginAttemptService:
+    return LoginAttemptService(repo=login_attempt_repository)
 
 
 def get_knowledge_ingestion_service() -> KnowledgeIngestionService:
