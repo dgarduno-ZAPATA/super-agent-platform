@@ -35,6 +35,7 @@ from core.ports.repositories import (
 )
 from core.ports.transcription_provider import TranscriptionProvider
 from core.services.conversation_agent import ConversationAgent
+from core.services.image_analysis_service import ImageAnalysisService
 from core.services.orchestrator import OrchestratorAgent
 
 logger = structlog.get_logger("super_agent_platform.core.services.inbound_handler")
@@ -60,6 +61,7 @@ class InboundMessageHandler:
         session_repository: SessionRepository,
         silenced_user_repository: SilencedUserRepository,
         transcription_provider: TranscriptionProvider,
+        image_analysis_service: ImageAnalysisService,
         conversation_agent: ConversationAgent,
         orchestrator: OrchestratorAgent,
         fsm_config: FSMConfig,
@@ -73,6 +75,7 @@ class InboundMessageHandler:
         self._session_repository = session_repository
         self._silenced_user_repository = silenced_user_repository
         self._transcription_provider = transcription_provider
+        self._image_analysis_service = image_analysis_service
         self._conversation_agent = conversation_agent
         self._orchestrator = orchestrator
         self._fsm_config = fsm_config
@@ -109,7 +112,9 @@ class InboundMessageHandler:
                 event_type=inbound_event.event_type,
             )
 
-        enriched_inbound_event = self._enrich_event_for_processing(inbound_event)
+        enriched_inbound_event, media_failure_response = await self._enrich_event_for_processing(
+            inbound_event
+        )
         conversation_id = self._build_conversation_id(enriched_inbound_event.from_phone)
         event_payload = self._build_event_payload(enriched_inbound_event)
         conversation_event = ConversationEvent(
@@ -168,6 +173,27 @@ class InboundMessageHandler:
             )
             return InboundHandleResult(
                 status="handoff_active",
+                processed=True,
+                conversation_id=conversation_id,
+                lead_id=lead_profile.id,
+                event_type=enriched_inbound_event.event_type,
+                message_kind=enriched_inbound_event.kind,
+            )
+
+        if media_failure_response is not None:
+            await self._send_media_processing_failure_response(
+                inbound_event=enriched_inbound_event,
+                response_text=media_failure_response,
+            )
+            logger.info(
+                "inbound_webhook_processed_media_fallback",
+                conversation_id=str(conversation_id),
+                lead_id=str(lead_profile.id),
+                event_type=enriched_inbound_event.event_type,
+                message_kind=enriched_inbound_event.kind.value,
+            )
+            return InboundHandleResult(
+                status="processed",
                 processed=True,
                 conversation_id=conversation_id,
                 lead_id=lead_profile.id,
@@ -439,19 +465,14 @@ class InboundMessageHandler:
         )
         return self._fsm_config.initial_state
 
-    def _enrich_event_for_processing(self, inbound_event: InboundEvent) -> InboundEvent:
-        if inbound_event.kind is not MessageKind.AUDIO:
-            return inbound_event
-
-        transcription_text = self._transcribe_audio(inbound_event)
-        metadata = dict(inbound_event.metadata)
-        metadata["transcription_text"] = transcription_text
-
-        return replace(
-            inbound_event,
-            text=transcription_text if inbound_event.text is None else inbound_event.text,
-            metadata=metadata,
-        )
+    async def _enrich_event_for_processing(
+        self, inbound_event: InboundEvent
+    ) -> tuple[InboundEvent, str | None]:
+        if inbound_event.kind is MessageKind.AUDIO:
+            return await self._enrich_audio_event(inbound_event)
+        if inbound_event.kind is MessageKind.IMAGE:
+            return await self._enrich_image_event(inbound_event)
+        return inbound_event, None
 
     def _build_event_payload(self, inbound_event: InboundEvent) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -476,18 +497,105 @@ class InboundMessageHandler:
 
         return payload
 
-    def _transcribe_audio(self, inbound_event: InboundEvent) -> str:
-        mime_type = self._guess_audio_mime_type(inbound_event.media_url)
+    async def _enrich_audio_event(self, inbound_event: InboundEvent) -> tuple[InboundEvent, str | None]:
+        media_url = inbound_event.media_url
+        metadata = dict(inbound_event.metadata)
+        if media_url is None:
+            logger.warning("audio_transcription_failed", message_id=inbound_event.message_id)
+            return (
+                replace(inbound_event, metadata=metadata),
+                "Recibi tu nota de voz pero no pude escucharla bien. "
+                "Puedes escribirme lo que necesitas?",
+            )
 
-        try:
-            return self._transcription_provider.transcribe(audio_bytes=b"", mime_type=mime_type)
-        except Exception:
+        mime_type = self._guess_audio_mime_type(media_url)
+        transcription_text = await self._transcription_provider.transcribe(
+            audio_url=media_url,
+            mime_type=mime_type,
+        )
+        if transcription_text is None:
             logger.warning(
-                "inbound_audio_transcription_failed",
+                "audio_transcription_failed",
                 message_id=inbound_event.message_id,
+                media_url=media_url,
                 mime_type=mime_type,
             )
-            return "Audio transcription pending"
+            metadata["transcription_failed"] = True
+            return (
+                replace(inbound_event, metadata=metadata),
+                "Recibi tu nota de voz pero no pude escucharla bien. "
+                "Puedes escribirme lo que necesitas?",
+            )
+
+        logger.info(
+            "audio_transcribed",
+            message_id=inbound_event.message_id,
+            chars=len(transcription_text),
+            media_url=media_url,
+        )
+        metadata["transcription_text"] = transcription_text
+        return (
+            replace(
+                inbound_event,
+                text=transcription_text if inbound_event.text is None else inbound_event.text,
+                metadata=metadata,
+            ),
+            None,
+        )
+
+    async def _enrich_image_event(self, inbound_event: InboundEvent) -> tuple[InboundEvent, str | None]:
+        media_url = inbound_event.media_url
+        metadata = dict(inbound_event.metadata)
+        if media_url is None:
+            logger.warning("image_analysis_failed", message_id=inbound_event.message_id)
+            return (
+                replace(inbound_event, metadata=metadata),
+                "Vi que me mandaste una imagen, pero no pude verla bien. "
+                "Puedes decirme que me quieres mostrar?",
+            )
+
+        description = await self._image_analysis_service.analyze(media_url)
+        if description is None:
+            logger.warning(
+                "image_analysis_failed",
+                message_id=inbound_event.message_id,
+                media_url=media_url,
+            )
+            metadata["image_analysis_failed"] = True
+            return (
+                replace(inbound_event, metadata=metadata),
+                "Vi que me mandaste una imagen, pero no pude verla bien. "
+                "Puedes decirme que me quieres mostrar?",
+            )
+
+        logger.info(
+            "image_analyzed",
+            message_id=inbound_event.message_id,
+            media_url=media_url,
+        )
+        metadata["image_description"] = description
+        image_context = f"[El cliente envio una imagen: {description}]"
+        text = f"{inbound_event.text}\n{image_context}" if inbound_event.text else image_context
+        return replace(inbound_event, text=text, metadata=metadata), None
+
+    async def _send_media_processing_failure_response(
+        self,
+        inbound_event: InboundEvent,
+        response_text: str,
+    ) -> None:
+        correlation_id = inbound_event.message_id
+        try:
+            await self._messaging_provider.send_text(
+                to=inbound_event.from_phone,
+                text=response_text,
+                correlation_id=correlation_id,
+            )
+        except Exception:
+            logger.exception(
+                "media_processing_failure_response_failed",
+                phone=inbound_event.from_phone,
+                correlation_id=correlation_id,
+            )
 
     async def _route_handoff_to_branch(
         self,

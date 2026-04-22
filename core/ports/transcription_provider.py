@@ -2,5 +2,5 @@ from typing import Protocol
 
 
 class TranscriptionProvider(Protocol):
-    def transcribe(self, audio_bytes: bytes, mime_type: str) -> str:
-        """Transcribe the provided audio bytes and return plain text."""
+    async def transcribe(self, audio_url: str, mime_type: str | None = None) -> str | None:
+        """Transcribe an audio URL and return plain text when available."""

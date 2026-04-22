@@ -9,6 +9,7 @@ from adapters.knowledge.pgvector_adapter import PgVectorKnowledgeAdapter
 from adapters.llm.openai_adapter import OpenAILLMAdapter
 from adapters.llm.resilient_adapter import ResilientLLMAdapter
 from adapters.llm.vertex_adapter import VertexLLMAdapter
+from adapters.llm.vertex_transcription_adapter import VertexTranscriptionAdapter
 from adapters.messaging.evolution.adapter import EvolutionMessagingAdapter
 from adapters.storage.db import get_session_factory
 from adapters.storage.repositories.crm_outbox_repo import PostgresCRMOutboxRepository
@@ -17,7 +18,6 @@ from adapters.storage.repositories.lead_repo import PostgresLeadProfileRepositor
 from adapters.storage.repositories.outbound_queue_repo import PostgresOutboundQueueRepository
 from adapters.storage.repositories.session_repo import PostgresSessionRepository
 from adapters.storage.repositories.silenced_repo import PostgresSilencedUserRepository
-from adapters.transcription.whisper_stub import WhisperStubTranscriptionProvider
 from core.auth.jwt_handler import verify_token
 from core.brand.schema import Brand
 from core.config import get_settings
@@ -41,6 +41,7 @@ from core.services.campaign_worker import CampaignWorker
 from core.services.conversation_agent import ConversationAgent
 from core.services.dashboard_service import DashboardService
 from core.services.handoff_service import HandoffService
+from core.services.image_analysis_service import ImageAnalysisService
 from core.services.inbound_handler import InboundMessageHandler
 from core.services.orchestrator import OrchestratorAgent
 from core.services.replay_engine import ReplayEngine
@@ -127,18 +128,23 @@ def get_inventory_provider(
 
 
 def get_llm_provider() -> LLMProvider:
+    primary = get_vertex_llm_adapter()
     settings = get_settings()
-    primary = VertexLLMAdapter(
-        project_id=settings.gcp_project_id,
-        region=settings.gcp_region,
-        model_name=settings.vertex_model_name,
-        embedding_model_name=settings.vertex_embedding_model_name,
-    )
     fallback = OpenAILLMAdapter(
         api_key=settings.openai_api_key,
         model_name=settings.openai_model_name,
     )
     return ResilientLLMAdapter(primary=primary, fallback=fallback)
+
+
+def get_vertex_llm_adapter() -> VertexLLMAdapter:
+    settings = get_settings()
+    return VertexLLMAdapter(
+        project_id=settings.gcp_project_id,
+        region=settings.gcp_region,
+        model_name=settings.vertex_model_name,
+        embedding_model_name=settings.vertex_embedding_model_name,
+    )
 
 
 async def get_knowledge_provider(
@@ -151,7 +157,11 @@ async def get_knowledge_provider(
 
 
 def get_transcription_provider() -> TranscriptionProvider:
-    return WhisperStubTranscriptionProvider()
+    return VertexTranscriptionAdapter(vertex_adapter=get_vertex_llm_adapter())
+
+
+def get_image_analysis_service() -> ImageAnalysisService:
+    return ImageAnalysisService(vertex_adapter=get_vertex_llm_adapter())
 
 
 def get_conversation_event_repository() -> ConversationEventRepository:
@@ -305,6 +315,7 @@ def get_inbound_message_handler(
         SilencedUserRepository, Depends(get_silenced_user_repository)
     ],
     transcription_provider: Annotated[TranscriptionProvider, Depends(get_transcription_provider)],
+    image_analysis_service: Annotated[ImageAnalysisService, Depends(get_image_analysis_service)],
     conversation_agent: Annotated[ConversationAgent, Depends(get_conversation_agent)],
     orchestrator: Annotated[OrchestratorAgent, Depends(get_orchestrator_agent)],
     fsm_config: Annotated[FSMConfig, Depends(get_fsm_config)],
@@ -319,6 +330,7 @@ def get_inbound_message_handler(
         session_repository=session_repository,
         silenced_user_repository=silenced_user_repository,
         transcription_provider=transcription_provider,
+        image_analysis_service=image_analysis_service,
         conversation_agent=conversation_agent,
         orchestrator=orchestrator,
         fsm_config=fsm_config,

@@ -168,8 +168,8 @@ class ReplaySilencedRepository:
 
 
 class ReplayTranscriptionProvider:
-    def transcribe(self, audio_bytes: bytes, mime_type: str) -> str:
-        del audio_bytes, mime_type
+    async def transcribe(self, audio_url: str, mime_type: str | None = None) -> str | None:
+        del audio_url, mime_type
         return "not-used"
 
 
@@ -181,6 +181,12 @@ class ReplayConversationAgent:
         conversation_history: list[ConversationEvent] | None = None,
     ) -> None:
         del event, session, conversation_history
+
+
+class ReplayImageAnalysisService:
+    async def analyze(self, image_url: str, mime_type: str | None = None) -> str | None:
+        del image_url, mime_type
+        return None
 
 
 class ReplayOrchestrator:
@@ -290,6 +296,7 @@ async def _run_sequence() -> tuple[
         session_repository=session_repo,
         silenced_user_repository=ReplaySilencedRepository(),
         transcription_provider=ReplayTranscriptionProvider(),
+        image_analysis_service=ReplayImageAnalysisService(),
         conversation_agent=ReplayConversationAgent(),
         orchestrator=ReplayOrchestrator(),
         fsm_config=_build_fsm_config(),

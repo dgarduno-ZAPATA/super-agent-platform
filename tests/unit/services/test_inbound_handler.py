@@ -193,12 +193,12 @@ class FakeSilencedUserRepository:
 
 
 class FakeTranscriptionProvider:
-    def __init__(self, transcription_text: str = "Transcribed audio") -> None:
+    def __init__(self, transcription_text: str | None = "Transcribed audio") -> None:
         self.transcription_text = transcription_text
-        self.calls: list[tuple[bytes, str]] = []
+        self.calls: list[tuple[str, str | None]] = []
 
-    def transcribe(self, audio_bytes: bytes, mime_type: str) -> str:
-        self.calls.append((audio_bytes, mime_type))
+    async def transcribe(self, audio_url: str, mime_type: str | None = None) -> str | None:
+        self.calls.append((audio_url, mime_type))
         return self.transcription_text
 
 
@@ -213,6 +213,16 @@ class FakeConversationAgent:
         conversation_history: list[ConversationEvent] | None = None,
     ) -> None:
         self.calls.append((event, session, conversation_history))
+
+
+class FakeImageAnalysisService:
+    def __init__(self, description: str | None = "Camion seminuevo en patio") -> None:
+        self.description = description
+        self.calls: list[tuple[str, str | None]] = []
+
+    async def analyze(self, image_url: str, mime_type: str | None = None) -> str | None:
+        self.calls.append((image_url, mime_type))
+        return self.description
 
 
 class FakeOrchestrator:
@@ -262,12 +272,18 @@ class FakeBranchProvider:
 
 
 def _build_event(kind: MessageKind = MessageKind.TEXT, text: str = "Hola") -> InboundEvent:
+    media_url = None
+    if kind is MessageKind.AUDIO:
+        media_url = "https://cdn.example.com/audio.ogg"
+    if kind is MessageKind.IMAGE:
+        media_url = "https://cdn.example.com/image.jpg"
+
     return InboundEvent(
         message_id="wamid-001",
         from_phone="5214421234567",
         kind=kind,
         text=text if kind is MessageKind.TEXT else None,
-        media_url="https://cdn.example.com/audio.ogg" if kind is MessageKind.AUDIO else None,
+        media_url=media_url,
         raw_metadata={"push_name": "Cliente Demo"},
         received_at=datetime.now(UTC),
         sender_id="5214421234567@s.whatsapp.net",
@@ -287,6 +303,7 @@ def _build_handler(
     silenced_repo: FakeSilencedUserRepository,
     transcription_provider: FakeTranscriptionProvider,
     conversation_agent: FakeConversationAgent,
+    image_analysis_service: FakeImageAnalysisService | None = None,
     orchestrator: FakeOrchestrator | None = None,
     branch_provider: FakeBranchProvider | None = None,
 ) -> InboundMessageHandler:
@@ -349,6 +366,7 @@ def _build_handler(
         session_repository=session_repo,
         silenced_user_repository=silenced_repo,
         transcription_provider=transcription_provider,
+        image_analysis_service=image_analysis_service or FakeImageAnalysisService(),
         conversation_agent=conversation_agent,
         orchestrator=orchestrator or FakeOrchestrator(),
         fsm_config=fsm_config,
@@ -508,8 +526,101 @@ async def test_audio_message_calls_transcription_provider() -> None:
 
     assert result.processed is True
     assert len(transcription_provider.calls) == 1
+    assert transcription_provider.calls[0][0] == "https://cdn.example.com/audio.ogg"
     assert event_repo.events[0].payload["transcription_text"] == "Texto transcrito"
     assert len(conversation_agent.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_audio_transcription_failure_sends_friendly_response() -> None:
+    event_repo = FakeConversationEventRepository()
+    lead_repo = FakeLeadProfileRepository()
+    crm_outbox_repo = FakeCRMOutboxRepository()
+    session_repo = FakeSessionRepository()
+    silenced_repo = FakeSilencedUserRepository()
+    transcription_provider = FakeTranscriptionProvider(None)
+    conversation_agent = FakeConversationAgent()
+    provider = FakeMessagingProvider(event=_build_event(MessageKind.AUDIO))
+    handler = _build_handler(
+        messaging_provider=provider,
+        event_repo=event_repo,
+        lead_repo=lead_repo,
+        crm_outbox_repo=crm_outbox_repo,
+        session_repo=session_repo,
+        silenced_repo=silenced_repo,
+        transcription_provider=transcription_provider,
+        conversation_agent=conversation_agent,
+    )
+
+    result = await handler.handle({"audio": True})
+
+    assert result.processed is True
+    assert len(provider.sent_messages) == 1
+    assert "no pude escucharla bien" in provider.sent_messages[0]["text"].lower()
+    assert len(conversation_agent.calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_image_analyzed_and_injected_in_context() -> None:
+    event_repo = FakeConversationEventRepository()
+    lead_repo = FakeLeadProfileRepository()
+    crm_outbox_repo = FakeCRMOutboxRepository()
+    session_repo = FakeSessionRepository()
+    silenced_repo = FakeSilencedUserRepository()
+    transcription_provider = FakeTranscriptionProvider()
+    conversation_agent = FakeConversationAgent()
+    image_service = FakeImageAnalysisService("Camion Kenworth, buen estado")
+    handler = _build_handler(
+        messaging_provider=FakeMessagingProvider(event=_build_event(MessageKind.IMAGE)),
+        event_repo=event_repo,
+        lead_repo=lead_repo,
+        crm_outbox_repo=crm_outbox_repo,
+        session_repo=session_repo,
+        silenced_repo=silenced_repo,
+        transcription_provider=transcription_provider,
+        image_analysis_service=image_service,
+        conversation_agent=conversation_agent,
+    )
+
+    result = await handler.handle({"image": True})
+
+    assert result.processed is True
+    assert len(image_service.calls) == 1
+    assert len(conversation_agent.calls) == 1
+    analyzed_event = conversation_agent.calls[0][0]
+    assert analyzed_event.text is not None
+    assert "[El cliente envio una imagen: Camion Kenworth, buen estado]" in analyzed_event.text
+
+
+@pytest.mark.asyncio
+async def test_image_analysis_failure_sends_friendly_response() -> None:
+    event_repo = FakeConversationEventRepository()
+    lead_repo = FakeLeadProfileRepository()
+    crm_outbox_repo = FakeCRMOutboxRepository()
+    session_repo = FakeSessionRepository()
+    silenced_repo = FakeSilencedUserRepository()
+    transcription_provider = FakeTranscriptionProvider()
+    conversation_agent = FakeConversationAgent()
+    provider = FakeMessagingProvider(event=_build_event(MessageKind.IMAGE))
+    image_service = FakeImageAnalysisService(None)
+    handler = _build_handler(
+        messaging_provider=provider,
+        event_repo=event_repo,
+        lead_repo=lead_repo,
+        crm_outbox_repo=crm_outbox_repo,
+        session_repo=session_repo,
+        silenced_repo=silenced_repo,
+        transcription_provider=transcription_provider,
+        image_analysis_service=image_service,
+        conversation_agent=conversation_agent,
+    )
+
+    result = await handler.handle({"image": True})
+
+    assert result.processed is True
+    assert len(provider.sent_messages) == 1
+    assert "no pude verla bien" in provider.sent_messages[0]["text"].lower()
+    assert len(conversation_agent.calls) == 0
 
 
 @pytest.mark.asyncio

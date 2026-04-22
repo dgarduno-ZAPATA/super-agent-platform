@@ -120,8 +120,8 @@ class FakeSilencedUserRepository:
 
 
 class FakeTranscriptionProvider:
-    def transcribe(self, audio_bytes: bytes, mime_type: str) -> str:
-        del audio_bytes, mime_type
+    async def transcribe(self, audio_url: str, mime_type: str | None = None) -> str | None:
+        del audio_url, mime_type
         return "texto"
 
 
@@ -133,6 +133,12 @@ class FakeConversationAgent:
         conversation_history: list[ConversationEvent] | None = None,
     ) -> None:
         del event, session, conversation_history
+        return None
+
+
+class FakeImageAnalysisService:
+    async def analyze(self, image_url: str, mime_type: str | None = None) -> str | None:
+        del image_url, mime_type
         return None
 
 
@@ -258,6 +264,7 @@ async def test_handoff_with_identified_branch_routes_to_all_branch_phones() -> N
         session_repository=session_repo,
         silenced_user_repository=FakeSilencedUserRepository(),
         transcription_provider=FakeTranscriptionProvider(),
+        image_analysis_service=FakeImageAnalysisService(),
         conversation_agent=FakeConversationAgent(),
         orchestrator=FakeOrchestrator(),
         fsm_config=_fsm_config(),
@@ -299,6 +306,7 @@ async def test_handoff_without_branch_uses_fallback_branch() -> None:
         session_repository=session_repo,
         silenced_user_repository=FakeSilencedUserRepository(),
         transcription_provider=FakeTranscriptionProvider(),
+        image_analysis_service=FakeImageAnalysisService(),
         conversation_agent=FakeConversationAgent(),
         orchestrator=FakeOrchestrator(),
         fsm_config=_fsm_config(),

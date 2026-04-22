@@ -6,10 +6,10 @@ logger = structlog.get_logger("super_agent_platform.adapters.transcription.whisp
 
 
 class WhisperStubTranscriptionProvider(TranscriptionProvider):
-    def transcribe(self, audio_bytes: bytes, mime_type: str) -> str:
+    async def transcribe(self, audio_url: str, mime_type: str | None = None) -> str | None:
         logger.warning(
             "audio_transcription_stub_used",
-            audio_size_bytes=len(audio_bytes),
+            audio_url=audio_url,
             mime_type=mime_type,
         )
-        return "Audio transcription not yet implemented"
+        return None

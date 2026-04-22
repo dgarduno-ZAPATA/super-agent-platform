@@ -126,6 +126,54 @@ class VertexLLMAdapter(LLMProvider):
             metadata={"model": self._model_name, "provider": "vertex"},
         )
 
+    async def generate_multimodal(self, parts: list[dict[str, object]]) -> str:
+        access_token = await self._resolve_access_token()
+        endpoint = (
+            f"https://{self._region}-aiplatform.googleapis.com/v1/projects/"
+            f"{self._project_id}/locations/{self._region}/publishers/google/models/"
+            f"{self._model_name}:generateContent"
+        )
+        normalized_parts = [self._normalize_multimodal_part(part) for part in parts]
+        payload: dict[str, object] = {
+            "contents": [{"role": "user", "parts": normalized_parts}],
+            "generationConfig": {"temperature": 0.2},
+        }
+
+        response = await self._client.post(
+            endpoint,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+        response.raise_for_status()
+
+        body = response.json()
+        candidates = body.get("candidates")
+        if not isinstance(candidates, list) or not candidates:
+            raise RuntimeError("vertex multimodal response missing candidates")
+
+        first_candidate = candidates[0]
+        if not isinstance(first_candidate, dict):
+            raise RuntimeError("vertex multimodal response candidate format is invalid")
+
+        content = first_candidate.get("content", {})
+        response_parts = content.get("parts", []) if isinstance(content, dict) else []
+        text_chunks: list[str] = []
+        if isinstance(response_parts, list):
+            for part in response_parts:
+                if not isinstance(part, dict):
+                    continue
+                text_value = part.get("text")
+                if isinstance(text_value, str) and text_value.strip():
+                    text_chunks.append(text_value.strip())
+
+        response_text = "\n".join(text_chunks).strip()
+        if not response_text:
+            raise RuntimeError("vertex multimodal response missing text content")
+        return response_text
+
     async def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
@@ -258,3 +306,10 @@ class VertexLLMAdapter(LLMProvider):
             "description": tool.description,
             "parameters": tool.input_schema,
         }
+
+    @staticmethod
+    def _normalize_multimodal_part(part: dict[str, object]) -> dict[str, object]:
+        inline_data = part.get("inline_data")
+        if isinstance(inline_data, dict):
+            return {"inlineData": inline_data}
+        return part
