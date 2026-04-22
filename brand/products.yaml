@@ -7,6 +7,7 @@ products:
       brand: Freightliner
       model_year: 2020
       fuel: diesel
+      document_url: https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf
   - sku: INT-LT-2019
     name: International LT 2019
     description: Unidad usada para larga distancia con historial de servicio disponible.
@@ -15,6 +16,7 @@ products:
       brand: International
       model_year: 2019
       fuel: diesel
+      document_url: https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf
   - sku: M2-BOX-2018
     name: Freightliner M2 Caja Seca 2018
     description: Camion mediano usado para reparto con caja seca y opciones de renovacion.
@@ -23,3 +25,4 @@ products:
       brand: Freightliner
       model_year: 2018
       fuel: diesel
+      document_url: https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf

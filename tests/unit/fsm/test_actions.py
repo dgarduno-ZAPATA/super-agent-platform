@@ -41,6 +41,7 @@ class FakeMessagingProvider:
     def __init__(self) -> None:
         self.sent_messages: list[dict[str, str]] = []
         self.sent_documents: list[dict[str, str]] = []
+        self.fail_send_document = False
 
     async def send_text(self, to: str, text: str, correlation_id: str) -> MessageDeliveryReceipt:
         self.sent_messages.append({"to": to, "text": text, "correlation_id": correlation_id})
@@ -55,6 +56,8 @@ class FakeMessagingProvider:
     async def send_document(
         self, to: str, document_url: str, filename: str, correlation_id: str
     ) -> MessageDeliveryReceipt:
+        if self.fail_send_document:
+            raise RuntimeError("sendMedia failed")
         self.sent_documents.append(
             {
                 "to": to,
@@ -295,3 +298,30 @@ async def test_send_document_action_uses_brand_products_catalog() -> None:
     assert sent["document_url"] == "https://cdn.example.com/fichas/cascadia.pdf"
     assert sent["filename"] == "FL-CASCADIA-2020.pdf"
     assert sent["correlation_id"] == "wamid-002"
+
+
+@pytest.mark.asyncio
+async def test_send_document_action_falls_back_to_text_when_provider_fails() -> None:
+    messaging = FakeMessagingProvider()
+    messaging.fail_send_document = True
+    registry = build_default_action_registry(
+        FSMActionDependencies(
+            messaging_provider=messaging,
+            brand=_build_brand(),
+        ),
+    )
+
+    await registry["send_document"](
+        {
+            "phone": "5214421234567",
+            "product_sku": "FL-CASCADIA-2020",
+            "correlation_id": "wamid-003",
+        }
+    )
+
+    assert len(messaging.sent_documents) == 0
+    assert len(messaging.sent_messages) == 1
+    fallback = messaging.sent_messages[0]
+    assert fallback["to"] == "5214421234567"
+    assert fallback["correlation_id"] == "wamid-003"
+    assert "fichas tecnicas disponibles" in fallback["text"]

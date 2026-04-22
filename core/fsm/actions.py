@@ -289,18 +289,41 @@ def build_default_action_registry(
 
         correlation_id = _coerce_str(context.get("correlation_id")) or "fsm-send-document"
         document_url, filename = _resolve_document_target(context, deps)
-        await deps.messaging_provider.send_document(
-            to=to_phone,
-            document_url=document_url,
-            filename=filename,
-            correlation_id=correlation_id,
-        )
-        logger.info(
-            "fsm_send_document_done",
-            to=to_phone,
-            filename=filename,
-            document_url=document_url,
-        )
+        try:
+            await deps.messaging_provider.send_document(
+                to=to_phone,
+                document_url=document_url,
+                filename=filename,
+                correlation_id=correlation_id,
+            )
+            logger.info(
+                "fsm_send_document_done",
+                to=to_phone,
+                filename=filename,
+                document_url=document_url,
+            )
+        except Exception as exc:
+            logger.error(
+                "fsm_send_document_failed",
+                to=to_phone,
+                filename=filename,
+                document_url=document_url,
+                correlation_id=correlation_id,
+                error=str(exc),
+            )
+            await deps.messaging_provider.send_text(
+                to=to_phone,
+                text=(
+                    "Te comparto que tenemos fichas tecnicas disponibles. "
+                    "Quieres que un asesor te las envie directamente?"
+                ),
+                correlation_id=correlation_id,
+            )
+            logger.info(
+                "fsm_send_document_fallback_text_sent",
+                to=to_phone,
+                correlation_id=correlation_id,
+            )
 
     return {
         "log_transition": log_transition_action,
