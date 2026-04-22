@@ -43,10 +43,10 @@ class Settings(BaseSettings):
         default="text-embedding-004",
         alias="VERTEX_EMBEDDING_MODEL_NAME",
     )
-    anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
-    anthropic_model_name: str = Field(
-        default="claude-haiku-4-5-20251001",
-        alias="ANTHROPIC_MODEL_NAME",
+    openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
+    openai_model_name: str = Field(
+        default="gpt-4o-mini",
+        alias="OPENAI_MODEL_NAME",
     )
     branch_sheet_url: str = Field(
         default=(

@@ -6,7 +6,7 @@ from adapters.branches.sheets_adapter import SheetsBranchAdapter
 from adapters.crm.monday_adapter import MondayCRMAdapter
 from adapters.inventory.sheets_adapter import SheetsInventoryAdapter
 from adapters.knowledge.pgvector_adapter import PgVectorKnowledgeAdapter
-from adapters.llm.anthropic_adapter import AnthropicLLMAdapter
+from adapters.llm.openai_adapter import OpenAILLMAdapter
 from adapters.llm.resilient_adapter import ResilientLLMAdapter
 from adapters.llm.vertex_adapter import VertexLLMAdapter
 from adapters.messaging.evolution.adapter import EvolutionMessagingAdapter
@@ -134,9 +134,9 @@ def get_llm_provider() -> LLMProvider:
         model_name=settings.vertex_model_name,
         embedding_model_name=settings.vertex_embedding_model_name,
     )
-    fallback = AnthropicLLMAdapter(
-        api_key=settings.anthropic_api_key,
-        model_name=settings.anthropic_model_name,
+    fallback = OpenAILLMAdapter(
+        api_key=settings.openai_api_key,
+        model_name=settings.openai_model_name,
     )
     return ResilientLLMAdapter(primary=primary, fallback=fallback)
 

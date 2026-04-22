@@ -34,11 +34,11 @@ async def test_resilient_llm_raises_when_both_fail() -> None:
     primary = AsyncMock()
     primary.complete.side_effect = RuntimeError("Vertex down")
     fallback = AsyncMock()
-    fallback.complete.side_effect = RuntimeError("Anthropic down")
+    fallback.complete.side_effect = RuntimeError("OpenAI down")
 
     adapter = ResilientLLMAdapter(primary=primary, fallback=fallback)
 
-    with pytest.raises(RuntimeError, match="Anthropic down"):
+    with pytest.raises(RuntimeError, match="OpenAI down"):
         await adapter.complete(
             system="system",
             messages=[],

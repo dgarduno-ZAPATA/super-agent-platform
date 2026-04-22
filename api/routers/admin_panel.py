@@ -7,9 +7,9 @@ import os
 from collections.abc import Sequence
 from typing import Annotated, Any
 
-import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from openai import AsyncOpenAI
 
 from api.dependencies import get_current_user, get_llm_provider
 from core.domain.messaging import ChatMessage
@@ -59,41 +59,23 @@ def _extract_json_array(raw: str) -> list[dict[str, Any]]:
     return [item for item in parsed if isinstance(item, dict)]
 
 
-async def _complete_with_anthropic(prompt: str) -> str:
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+async def _complete_with_openai(prompt: str) -> str:
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
     if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY not configured for fallback")
+        raise RuntimeError("OPENAI_API_KEY not configured for fallback")
 
-    model = os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest")
-    payload = {
-        "model": model,
-        "max_tokens": 4000,
-        "temperature": 0.2,
-        "messages": [{"role": "user", "content": prompt}],
-    }
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json=payload,
-        )
-        response.raise_for_status()
-        body = response.json()
-
-    content = body.get("content", [])
-    if not isinstance(content, list):
-        raise RuntimeError("Invalid Anthropic response")
-    texts: list[str] = []
-    for item in content:
-        if isinstance(item, dict) and item.get("type") == "text":
-            text = item.get("text")
-            if isinstance(text, str):
-                texts.append(text)
-    return "\n".join(texts).strip()
+    model = os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini")
+    client = AsyncOpenAI(api_key=api_key)
+    response = await client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2,
+        max_tokens=4000,
+    )
+    text = response.choices[0].message.content
+    if not isinstance(text, str):
+        raise RuntimeError("Invalid OpenAI response")
+    return text.strip()
 
 
 @router.post("/admin/generate-templates", response_model=None)
@@ -172,7 +154,7 @@ async def generate_templates_csv(
                 )
                 llm_text = llm_response.content
             except Exception:
-                llm_text = await _complete_with_anthropic(prompt)
+                llm_text = await _complete_with_openai(prompt)
 
             parsed = _extract_json_array(llm_text)
             template_by_idx: dict[int, str] = {}
