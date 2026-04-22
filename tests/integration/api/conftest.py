@@ -69,6 +69,8 @@ def clean_webhook_tables(async_engine_for_test: AsyncEngine) -> None:
             for table_name in [
                 "crm_dlq",
                 "crm_outbox",
+                "knowledge_chunks",
+                "knowledge_sources",
                 "conversation_events",
                 "outbound_queue",
                 "sessions",

@@ -16,6 +16,7 @@ from api.routers.auth import router as auth_router
 from api.routers.campaigns import router as campaigns_router
 from api.routers.conversations import router as conversations_router
 from api.routers.dashboard import router as dashboard_router
+from api.routers.knowledge import router as knowledge_router
 from api.routers.leads import router as leads_router
 from api.routers.webhook import router as webhook_router
 from core.brand.loader import BrandValidationError, load_brand
@@ -128,6 +129,7 @@ def create_app() -> FastAPI:
     app.include_router(dashboard_router)
     app.include_router(leads_router)
     app.include_router(campaigns_router)
+    app.include_router(knowledge_router)
     app.include_router(admin_router)
 
     @app.get("/health")

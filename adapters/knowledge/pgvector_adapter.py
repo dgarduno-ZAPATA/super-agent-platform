@@ -7,6 +7,7 @@ from uuid import uuid4
 from sqlalchemy import Select, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from adapters.llm.vertex_embedding_adapter import VertexEmbeddingAdapter
 from adapters.storage.models import KnowledgeChunkModel, KnowledgeSourceModel
 from core.domain.knowledge import KnowledgeChunk, KnowledgeSource
 from core.ports.knowledge_provider import KnowledgeProvider
@@ -18,9 +19,13 @@ class PgVectorKnowledgeAdapter(KnowledgeProvider):
         self,
         llm_provider: LLMProvider,
         session_factory: async_sessionmaker[AsyncSession],
+        embedding_adapter: VertexEmbeddingAdapter | None = None,
+        similarity_threshold: float = 0.7,
     ) -> None:
         self._llm_provider = llm_provider
         self._session_factory = session_factory
+        self._embedding_adapter = embedding_adapter
+        self._similarity_threshold = similarity_threshold
 
     async def index_document(
         self, source_id: str, content: str, metadata: dict[str, object]
@@ -29,7 +34,7 @@ class PgVectorKnowledgeAdapter(KnowledgeProvider):
         if not chunks:
             return
 
-        vectors = await self._llm_provider.embed(chunks)
+        vectors = await self._embed_documents(chunks)
         if len(vectors) != len(chunks):
             raise ValueError("embedding response count does not match generated chunks")
 
@@ -80,15 +85,14 @@ class PgVectorKnowledgeAdapter(KnowledgeProvider):
         if top_k <= 0:
             return []
 
-        query_vectors = await self._llm_provider.embed([question])
-        if not query_vectors:
-            return []
-        query_vector = query_vectors[0]
+        query_vector = await self._embed_query(question)
 
         distance_expr = KnowledgeChunkModel.embedding.cosine_distance(query_vector)
+        similarity_expr = (1 - distance_expr).label("similarity")
         statement: Select[tuple[KnowledgeChunkModel, KnowledgeSourceModel, float]] = (
-            select(KnowledgeChunkModel, KnowledgeSourceModel, distance_expr.label("distance"))
+            select(KnowledgeChunkModel, KnowledgeSourceModel, similarity_expr)
             .join(KnowledgeSourceModel, KnowledgeSourceModel.id == KnowledgeChunkModel.source_id)
+            .where(similarity_expr > self._similarity_threshold)
             .order_by(distance_expr.asc())
             .limit(top_k)
         )
@@ -99,8 +103,8 @@ class PgVectorKnowledgeAdapter(KnowledgeProvider):
             rows = result.all()
 
         chunks: list[KnowledgeChunk] = []
-        for chunk_model, source_model, distance in rows:
-            score = 1.0 - float(distance)
+        for chunk_model, source_model, similarity in rows:
+            score = float(similarity)
             chunk_metadata = {
                 "source_metadata": dict(source_model.metadata_json),
                 "chunk_index": chunk_model.chunk_index,
@@ -212,3 +216,19 @@ class PgVectorKnowledgeAdapter(KnowledgeProvider):
             )
 
         return statement
+
+    async def _embed_documents(self, chunks: list[str]) -> list[list[float]]:
+        if self._embedding_adapter is None:
+            return await self._llm_provider.embed(chunks)
+        vectors: list[list[float]] = []
+        for chunk in chunks:
+            vectors.append(await self._embedding_adapter.embed(chunk))
+        return vectors
+
+    async def _embed_query(self, question: str) -> list[float]:
+        if self._embedding_adapter is None:
+            query_vectors = await self._llm_provider.embed([question])
+            if not query_vectors:
+                raise RuntimeError("missing query embedding")
+            return query_vectors[0]
+        return await self._embedding_adapter.embed_query(question)

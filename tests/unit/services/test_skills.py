@@ -125,8 +125,23 @@ async def test_query_knowledge_base_formats_results() -> None:
 
     result = await registry.query_knowledge_base("financiamiento")
 
-    assert "Resultados de conocimiento:" in result
+    assert "Resultados de conocimiento relevantes:" in result
     assert "Resultado para: financiamiento" in result
+
+
+@pytest.mark.asyncio
+async def test_query_knowledge_base_returns_relevant_chunks() -> None:
+    registry = SkillRegistry(
+        knowledge_provider=FakeKnowledgeProvider(),
+        inventory_provider=FakeInventoryProvider(),
+        messaging_provider=FakeMessagingProvider(),
+        brand=load_brand(Path("brand")),
+    )
+
+    result = await registry.query_knowledge_base("credito")
+
+    assert "Fuente: catalogo" in result
+    assert "similitud=0.910" in result
 
 
 def test_query_inventory_formats_product_data() -> None:

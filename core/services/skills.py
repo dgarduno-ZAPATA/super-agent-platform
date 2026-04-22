@@ -113,15 +113,17 @@ class SkillRegistry:
     async def query_knowledge_base(self, query: str) -> str:
         chunks = await self._knowledge_provider.query(
             question=query,
-            top_k=3,
+            top_k=5,
             filters=None,
         )
         if not chunks:
             return "No se encontraron resultados en la base de conocimiento."
 
-        lines = ["Resultados de conocimiento:"]
+        lines = ["Resultados de conocimiento relevantes:"]
         for index, chunk in enumerate(chunks, start=1):
-            lines.append(f"{index}. ({chunk.source_id}, score={chunk.score:.3f}) {chunk.content}")
+            lines.append(
+                f"{index}. Fuente: {chunk.source_id} | similitud={chunk.score:.3f} | {chunk.content}"
+            )
         return "\n".join(lines)
 
     def query_inventory(self, product_name: str | None = None) -> str:

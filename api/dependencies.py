@@ -6,6 +6,7 @@ from adapters.branches.sheets_adapter import SheetsBranchAdapter
 from adapters.crm.monday_adapter import MondayCRMAdapter
 from adapters.inventory.sheets_adapter import SheetsInventoryAdapter
 from adapters.knowledge.pgvector_adapter import PgVectorKnowledgeAdapter
+from adapters.llm.vertex_embedding_adapter import VertexEmbeddingAdapter
 from adapters.llm.openai_adapter import OpenAILLMAdapter
 from adapters.llm.resilient_adapter import ResilientLLMAdapter
 from adapters.llm.vertex_adapter import VertexLLMAdapter
@@ -15,6 +16,7 @@ from adapters.storage.db import get_session_factory
 from adapters.storage.repositories.crm_outbox_repo import PostgresCRMOutboxRepository
 from adapters.storage.repositories.event_repo import PostgresConversationEventRepository
 from adapters.storage.repositories.lead_repo import PostgresLeadProfileRepository
+from adapters.storage.repositories.knowledge_repo import PostgresKnowledgeRepository
 from adapters.storage.repositories.outbound_queue_repo import PostgresOutboundQueueRepository
 from adapters.storage.repositories.session_repo import PostgresSessionRepository
 from adapters.storage.repositories.silenced_repo import PostgresSilencedUserRepository
@@ -41,11 +43,13 @@ from core.services.campaign_worker import CampaignWorker
 from core.services.conversation_agent import ConversationAgent
 from core.services.dashboard_service import DashboardService
 from core.services.handoff_service import HandoffService
+from core.services.knowledge_ingestion_service import KnowledgeIngestionService
 from core.services.image_analysis_service import ImageAnalysisService
 from core.services.inbound_handler import InboundMessageHandler
 from core.services.orchestrator import OrchestratorAgent
 from core.services.replay_engine import ReplayEngine
 from core.services.skills import SkillRegistry
+from core.services.document_chunker import DocumentChunker
 
 
 def get_brand(request: Request) -> Brand:
@@ -150,9 +154,33 @@ def get_vertex_llm_adapter() -> VertexLLMAdapter:
 async def get_knowledge_provider(
     llm_provider: Annotated[LLMProvider, Depends(get_llm_provider)],
 ) -> KnowledgeProvider:
+    settings = get_settings()
     return PgVectorKnowledgeAdapter(
         llm_provider=llm_provider,
+        embedding_adapter=VertexEmbeddingAdapter(
+            project_id=settings.gcp_project_id,
+            region=settings.gcp_region,
+            model_name=settings.vertex_embedding_model_name,
+        ),
         session_factory=await get_session_factory(),
+    )
+
+
+def get_knowledge_repository() -> PostgresKnowledgeRepository:
+    return PostgresKnowledgeRepository()
+
+
+def get_knowledge_ingestion_service() -> KnowledgeIngestionService:
+    settings = get_settings()
+    embedding_adapter = VertexEmbeddingAdapter(
+        project_id=settings.gcp_project_id,
+        region=settings.gcp_region,
+        model_name=settings.vertex_embedding_model_name,
+    )
+    return KnowledgeIngestionService(
+        chunker=DocumentChunker(),
+        embedding_adapter=embedding_adapter,
+        knowledge_repo=get_knowledge_repository(),
     )
 
 

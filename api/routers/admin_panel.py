@@ -2482,6 +2482,7 @@ async def admin_panel() -> HTMLResponse:
         <button class="tab" data-tab="generador_csv" type="button" role="tab" aria-selected="false" tabindex="-1">Generador CSV</button>
         <button class="tab" data-tab="conversaciones" type="button" role="tab" aria-selected="false" tabindex="-1">Conversaciones</button>
         <button class="tab" data-tab="monitor" type="button" role="tab" aria-selected="false" tabindex="-1">Monitor</button>
+        <button class="tab" data-tab="knowledge" type="button" role="tab" aria-selected="false" tabindex="-1">Base de conocimiento</button>
       </nav>
     </header>
     <main class="content">
@@ -2774,6 +2775,32 @@ async def admin_panel() -> HTMLResponse:
         </section>
       </section>
 
+      <section id="knowledge-view" class="csvgen hidden" aria-label="Base de conocimiento">
+        <div class="section-heading">
+          <span class="section-heading-text">Base de conocimiento</span>
+          <span class="section-heading-line"></span>
+          <div id="knowledge-spinner" class="spinner hidden" aria-label="Cargando fuentes"></div>
+        </div>
+        <section class="csvgen-card">
+          <form id="knowledge-upload-form" class="csvgen-actions" style="align-items:flex-end;">
+            <div style="flex:1; min-width:220px;">
+              <label for="knowledge-source-label">Nombre de fuente</label>
+              <input id="knowledge-source-label" class="template-input" type="text" placeholder="Ej. Catálogo Q1 2026" required />
+            </div>
+            <div style="flex:1; min-width:220px;">
+              <label for="knowledge-file-input">Documento (PDF/MD/TXT/DOCX)</label>
+              <input id="knowledge-file-input" class="template-input" type="file" accept=".pdf,.md,.txt,.docx" required />
+            </div>
+            <button id="knowledge-upload-btn" class="csvgen-btn primary" type="submit">Subir documento</button>
+          </form>
+          <div id="knowledge-status" class="csvgen-note">Sin operaciones recientes.</div>
+        </section>
+        <section class="csvgen-card">
+          <h3 class="monitor-title">Fuentes cargadas</h3>
+          <div id="knowledge-sources-list" class="csvgen-preview-list"></div>
+        </section>
+      </section>
+
       <div id="tab-placeholder" class="placeholder hidden">Selecciona una pestaña para continuar.</div>
     </main>
   </div>
@@ -2882,6 +2909,13 @@ async def admin_panel() -> HTMLResponse:
     const monitorFunnelList = document.getElementById("monitor-funnel-list");
     const monitorConvRates = document.getElementById("monitor-conv-rates");
     const monitorFooter = document.getElementById("monitor-footer");
+    const knowledgeView = document.getElementById("knowledge-view");
+    const knowledgeSpinner = document.getElementById("knowledge-spinner");
+    const knowledgeUploadForm = document.getElementById("knowledge-upload-form");
+    const knowledgeSourceLabel = document.getElementById("knowledge-source-label");
+    const knowledgeFileInput = document.getElementById("knowledge-file-input");
+    const knowledgeStatus = document.getElementById("knowledge-status");
+    const knowledgeSourcesList = document.getElementById("knowledge-sources-list");
     const navClock = document.getElementById("nav-clock");
 
     let currentTab = "dashboard";
@@ -2895,6 +2929,7 @@ async def admin_panel() -> HTMLResponse:
     let currentTraceLeadId = null;
     let currentTraceData = null;
     let monitorRefreshTimer = null;
+    let knowledgeLoading = false;
     let csvgenSelectedFile = null;
     let csvgenDetectedColumns = null;
     let csvgenGeneratedBlob = null;
@@ -4252,6 +4287,108 @@ con [tu unidad|el {vehiculo}]?`,
       }
     }
 
+    function setKnowledgeLoading(isLoading) {
+      knowledgeLoading = isLoading;
+      knowledgeSpinner.classList.toggle("hidden", !isLoading);
+    }
+
+    function renderKnowledgeSources(sources) {
+      if (!Array.isArray(sources) || sources.length === 0) {
+        knowledgeSourcesList.innerHTML = `<div class="csvgen-note">No hay fuentes cargadas.</div>`;
+        return;
+      }
+
+      knowledgeSourcesList.innerHTML = sources.map((source) => {
+        const label = escapeHtml(String(source.source_label || "Sin nombre"));
+        const chunks = Number(source.chunk_count || 0);
+        const indexedAt = source.indexed_at ? escapeHtml(String(source.indexed_at)) : "N/A";
+        return `
+          <div class="csvgen-preview-item">
+            <div><strong>${label}</strong></div>
+            <div>Chunks: ${chunks}</div>
+            <div>Fecha: ${indexedAt}</div>
+            <div style="margin-top:8px;">
+              <button class="csvgen-btn" type="button" data-knowledge-delete="${label}">Eliminar</button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function loadKnowledgeSources() {
+      setKnowledgeLoading(true);
+      try {
+        const response = await apiFetch("/api/v1/admin/knowledge/sources", { method: "GET" });
+        if (!response.ok) {
+          throw new Error(`http_${response.status}`);
+        }
+        const payload = await response.json();
+        renderKnowledgeSources(payload.sources || []);
+      } catch (error) {
+        knowledgeStatus.textContent = "No se pudo cargar la lista de fuentes.";
+      } finally {
+        setKnowledgeLoading(false);
+      }
+    }
+
+    async function uploadKnowledgeFile() {
+      if (knowledgeLoading) {
+        return;
+      }
+      const file = knowledgeFileInput.files?.[0];
+      const sourceLabel = (knowledgeSourceLabel.value || "").trim();
+      if (!file || !sourceLabel) {
+        knowledgeStatus.textContent = "Selecciona archivo y nombre de fuente.";
+        return;
+      }
+
+      setKnowledgeLoading(true);
+      knowledgeStatus.textContent = "Subiendo y procesando documento...";
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("source_label", sourceLabel);
+        const response = await apiFetch("/api/v1/admin/knowledge/upload", {
+          method: "POST",
+          body: formData,
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || "upload_failed");
+        }
+        knowledgeStatus.textContent = `Completado: ${payload.chunks_created} chunks para "${sourceLabel}".`;
+        knowledgeUploadForm.reset();
+        await loadKnowledgeSources();
+      } catch (error) {
+        knowledgeStatus.textContent = `Error en upload: ${error.message || error}`;
+      } finally {
+        setKnowledgeLoading(false);
+      }
+    }
+
+    async function deleteKnowledgeSource(sourceLabel) {
+      if (!sourceLabel || knowledgeLoading) {
+        return;
+      }
+      setKnowledgeLoading(true);
+      knowledgeStatus.textContent = `Eliminando fuente "${sourceLabel}"...`;
+      try {
+        const response = await apiFetch(`/api/v1/admin/knowledge/sources/${encodeURIComponent(sourceLabel)}`, {
+          method: "DELETE",
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || "delete_failed");
+        }
+        knowledgeStatus.textContent = `Eliminado: ${payload.chunks_deleted} chunks de "${sourceLabel}".`;
+        await loadKnowledgeSources();
+      } catch (error) {
+        knowledgeStatus.textContent = `Error al eliminar: ${error.message || error}`;
+      } finally {
+        setKnowledgeLoading(false);
+      }
+    }
+
     function stopDashboardRefresh() {
       if (dashboardRefreshTimer !== null) {
         clearInterval(dashboardRefreshTimer);
@@ -4326,6 +4463,7 @@ con [tu unidad|el {vehiculo}]?`,
         csvgenView.classList.add("hidden");
         conversationsView.classList.add("hidden");
         monitorView.classList.add("hidden");
+        knowledgeView.classList.add("hidden");
         dashboardView.classList.remove("hidden");
         loadDashboardStats();
         startDashboardRefresh();
@@ -4341,6 +4479,7 @@ con [tu unidad|el {vehiculo}]?`,
         csvgenView.classList.add("hidden");
         conversationsView.classList.add("hidden");
         monitorView.classList.add("hidden");
+        knowledgeView.classList.add("hidden");
         campaignsView.classList.remove("hidden");
         loadCampaignsState();
         startCampaignsRefresh();
@@ -4356,6 +4495,7 @@ con [tu unidad|el {vehiculo}]?`,
         csvgenView.classList.add("hidden");
         conversationsView.classList.add("hidden");
         monitorView.classList.add("hidden");
+        knowledgeView.classList.add("hidden");
         templatesView.classList.remove("hidden");
         runTemplateLiveAnalysis();
         if (templateBubbles.children.length === 0) {
@@ -4375,6 +4515,7 @@ con [tu unidad|el {vehiculo}]?`,
         conversationsView.classList.add("hidden");
         monitorView.classList.add("hidden");
         csvgenView.classList.remove("hidden");
+        knowledgeView.classList.add("hidden");
         return;
       }
 
@@ -4387,6 +4528,7 @@ con [tu unidad|el {vehiculo}]?`,
         templatesView.classList.add("hidden");
         csvgenView.classList.add("hidden");
         monitorView.classList.add("hidden");
+        knowledgeView.classList.add("hidden");
         conversationsView.classList.remove("hidden");
         if (!currentTraceData) {
           convSummaryCard.classList.add("hidden");
@@ -4405,8 +4547,24 @@ con [tu unidad|el {vehiculo}]?`,
         csvgenView.classList.add("hidden");
         conversationsView.classList.add("hidden");
         monitorView.classList.remove("hidden");
+        knowledgeView.classList.add("hidden");
         loadMonitorStats();
         startMonitorRefresh();
+        return;
+      }
+
+      if (tabName === "knowledge") {
+        stopCampaignsRefresh();
+        stopMonitorRefresh();
+        tabPlaceholder.classList.add("hidden");
+        dashboardView.classList.add("hidden");
+        campaignsView.classList.add("hidden");
+        templatesView.classList.add("hidden");
+        csvgenView.classList.add("hidden");
+        conversationsView.classList.add("hidden");
+        monitorView.classList.add("hidden");
+        knowledgeView.classList.remove("hidden");
+        loadKnowledgeSources();
         return;
       }
 
@@ -4418,6 +4576,7 @@ con [tu unidad|el {vehiculo}]?`,
       csvgenView.classList.add("hidden");
       conversationsView.classList.add("hidden");
       monitorView.classList.add("hidden");
+      knowledgeView.classList.add("hidden");
       tabPlaceholder.classList.remove("hidden");
       const activeLabel = tabs.querySelector(`.tab[data-tab="${tabName}"]`)?.textContent || "Sección";
       tabPlaceholder.textContent = `Sección "${activeLabel}" lista para implementar.`;
@@ -4581,6 +4740,23 @@ con [tu unidad|el {vehiculo}]?`,
 
     csvgenResetBtn.addEventListener("click", () => {
       csvgenReset();
+    });
+
+    knowledgeUploadForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      uploadKnowledgeFile();
+    });
+
+    knowledgeSourcesList.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLButtonElement)) {
+        return;
+      }
+      const sourceLabel = target.dataset.knowledgeDelete;
+      if (!sourceLabel) {
+        return;
+      }
+      deleteKnowledgeSource(sourceLabel);
     });
 
     loginForm.addEventListener("submit", async (event) => {
