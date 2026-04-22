@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
-from sqlalchemy import func, select
+from sqlalchemy import Text, cast, func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from adapters.storage.db import session_scope
@@ -41,13 +41,14 @@ class PostgresCRMOutboxRepository(CRMOutboxRepository):
     ) -> UUID:
         item_id = uuid4()
         aggregate_uuid = self._parse_aggregate_id(aggregate_id)
+        aggregate_value = str(aggregate_uuid)
 
         async with session_scope() as session:
             statement = (
                 insert(CRMOutboxModel)
                 .values(
                     id=item_id,
-                    aggregate_id=aggregate_uuid,
+                    aggregate_id=aggregate_value,
                     operation=operation,
                     payload=payload,
                     status="pending",
@@ -68,7 +69,7 @@ class PostgresCRMOutboxRepository(CRMOutboxRepository):
             if created_id is None:
                 existing_result = await session.execute(
                     select(CRMOutboxModel.id).where(
-                        CRMOutboxModel.aggregate_id == aggregate_uuid,
+                        cast(CRMOutboxModel.aggregate_id, Text) == aggregate_value,
                         CRMOutboxModel.operation == operation,
                         CRMOutboxModel.status == "pending",
                     )

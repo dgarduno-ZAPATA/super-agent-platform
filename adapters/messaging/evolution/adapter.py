@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
+import structlog
 from pydantic import ValidationError
 
 from adapters.messaging.evolution.normalizers import (
@@ -23,6 +24,8 @@ from core.domain.messaging import (
     UnsupportedEventTypeError,
 )
 from core.ports.messaging_provider import MessagingProvider
+
+logger = structlog.get_logger("super_agent_platform.adapters.messaging.evolution.adapter")
 
 
 class EvolutionMessagingAdapter(MessagingProvider):
@@ -85,9 +88,21 @@ class EvolutionMessagingAdapter(MessagingProvider):
     async def _send_message(
         self, endpoint: str, payload: dict[str, Any], correlation_id: str
     ) -> MessageDeliveryReceipt:
+        request_payload = dict(payload)
+        raw_number = request_payload.get("number")
+        if isinstance(raw_number, str):
+            request_payload["number"] = self._normalize_outbound_number(raw_number)
+
+        logger.debug(
+            "evolution_outbound_request",
+            endpoint=endpoint,
+            instance=self._settings.evolution_instance_name,
+            correlation_id=correlation_id,
+            payload=request_payload,
+        )
         response = await self._client.post(
             f"{endpoint}/{self._settings.evolution_instance_name}",
-            json=payload,
+            json=request_payload,
         )
         response.raise_for_status()
 
@@ -101,6 +116,11 @@ class EvolutionMessagingAdapter(MessagingProvider):
             correlation_id=correlation_id,
             metadata={"endpoint": endpoint},
         )
+
+    @staticmethod
+    def _normalize_outbound_number(number: str) -> str:
+        normalized = normalize_phone(number)
+        return normalized if normalized is not None else number.strip()
 
     @staticmethod
     def parse_inbound_event(raw_payload: dict[str, object]) -> InboundEvent:
