@@ -1,8 +1,13 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+import logging
 
+import sentry_sdk
 import structlog
 from fastapi import FastAPI, Request
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from api.middleware.correlation import CorrelationMiddleware
 from api.routers.admin_panel import router as admin_router
@@ -24,6 +29,23 @@ def create_app() -> FastAPI:
     settings = get_settings()
     setup_logging(settings.log_level)
     logger = structlog.get_logger("super_agent_platform.api")
+
+    sentry_logging = LoggingIntegration(
+        level=logging.WARNING,
+        event_level=logging.ERROR,
+    )
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        integrations=[
+            FastApiIntegration(),
+            StarletteIntegration(),
+            sentry_logging,
+        ],
+        traces_sample_rate=0.1,
+        environment=settings.environment,
+        release=settings.app_version,
+    )
+
     app = FastAPI(title="Super Agent Platform")
     app.add_middleware(CorrelationMiddleware)
 

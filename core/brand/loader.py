@@ -11,6 +11,7 @@ from core.brand.schema import (
     BrandConfig,
     ChannelsConfig,
     CRMMappingConfig,
+    FallbackMessagesConfig,
     FunnelConfig,
     OutboundTemplatesConfig,
     PoliciesConfig,
@@ -71,6 +72,12 @@ def load_brand(path: Path) -> Brand:
     if not prompt:
         raise BrandValidationError(f"{prompt_path.name}: prompt cannot be empty")
 
+    fallback_messages_path = brand_path / "fallback_messages.yaml"
+    if fallback_messages_path.exists():
+        fallback_messages = _load_schema(fallback_messages_path, FallbackMessagesConfig)
+    else:
+        fallback_messages = FallbackMessagesConfig()
+
     return Brand(
         brand=_load_schema(brand_path / "brand.yaml", BrandConfig),
         funnel=_load_schema(brand_path / "funnel.yaml", FunnelConfig),
@@ -82,5 +89,6 @@ def load_brand(path: Path) -> Brand:
         crm_mapping=_load_schema(brand_path / "crm_mapping.yaml", CRMMappingConfig),
         channels=_load_schema(brand_path / "channels.yaml", ChannelsConfig),
         fsm=_load_schema(brand_path / "fsm.yaml", FSMConfig),
+        fallback_messages=fallback_messages,
         prompt=prompt,
     )

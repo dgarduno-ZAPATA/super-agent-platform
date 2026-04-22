@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 import structlog
+import sentry_sdk
 
 from core.brand.schema import Brand
 from core.domain.branch import Branch
@@ -152,6 +153,11 @@ class InboundMessageHandler:
         session = await self._get_or_create_session(
             lead_profile.id, enriched_inbound_event.received_at
         )
+        self._set_sentry_tags(
+            lead_id=lead_profile.id,
+            conversation_id=conversation_id,
+            fsm_state=session.current_state,
+        )
         if session.current_state == "handoff_active":
             logger.info(
                 "inbound_webhook_handoff_active_bot_silenced",
@@ -202,6 +208,11 @@ class InboundMessageHandler:
             inbound_event=enriched_inbound_event,
             new_state=transition_result.new_state,
             classification=classification,
+        )
+        self._set_sentry_tags(
+            lead_id=lead_profile.id,
+            conversation_id=conversation_id,
+            fsm_state=updated_session.current_state,
         )
         if classification.intent == "opt_out":
             await self._silenced_user_repository.silence(
@@ -702,3 +713,10 @@ class InboundMessageHandler:
         if suffix == ".m4a":
             return "audio/mp4"
         return "audio/ogg"
+
+    @staticmethod
+    def _set_sentry_tags(lead_id: UUID, conversation_id: UUID, fsm_state: str) -> None:
+        scope = sentry_sdk.get_current_scope()
+        scope.set_tag("lead_id", str(lead_id))
+        scope.set_tag("conversation_id", str(conversation_id))
+        scope.set_tag("fsm_state", fsm_state)

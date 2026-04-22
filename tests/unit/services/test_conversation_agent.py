@@ -59,6 +59,26 @@ class FakeLLMProvider:
         raise NotImplementedError
 
 
+class FailingLLMProvider:
+    async def complete(
+        self,
+        messages: list[ChatMessage],
+        system: str,
+        tools: list[ToolSchema] | None,
+        temperature: float,
+    ) -> LLMResponse:
+        del messages, system, tools, temperature
+        raise RuntimeError("LLM failed")
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        del texts
+        raise NotImplementedError
+
+    async def transcribe_audio(self, audio_bytes: bytes, mime_type: str) -> str:
+        del audio_bytes, mime_type
+        raise NotImplementedError
+
+
 class FakeMessagingProvider:
     def __init__(self) -> None:
         self.sent_messages: list[dict[str, str]] = []
@@ -364,3 +384,26 @@ async def test_respond_uses_supplied_history_and_keeps_current_message_last() ->
     )
     assert first_call_messages[2] == ChatMessage(role="user", content="Busco un rabon")
     assert messaging.sent_messages[0]["text"] == "Te comparto opciones de rabon disponibles."
+
+
+@pytest.mark.asyncio
+async def test_llm_failure_sends_precanned_fallback_message() -> None:
+    brand = load_brand(Path("brand"))
+    messaging = FakeMessagingProvider()
+    event_repo = FakeConversationEventRepository()
+    agent = ConversationAgent(
+        llm_provider=FailingLLMProvider(),
+        messaging_provider=messaging,
+        brand=brand,
+        conversation_event_repository=event_repo,
+        skill_registry=FakeSkillRegistry(),
+    )
+    session = _session("discovery")
+
+    await agent.respond(_event("Hola"), session)
+
+    assert len(messaging.sent_messages) == 1
+    assert (
+        messaging.sent_messages[0]["text"]
+        == "Disculpa, estoy teniendo problemas tecnicos en este momento. Me permites unos minutos y te escribo de vuelta?"
+    )

@@ -11,7 +11,14 @@ class Settings(BaseSettings):
         alias="DATABASE_URL",
     )
     app_env: str = Field(default="development", alias="APP_ENV")
+    environment: str = Field(
+        default="production",
+        alias="ENVIRONMENT",
+        validation_alias=AliasChoices("ENVIRONMENT", "APP_ENV"),
+    )
+    app_version: str = Field(default="1.0.0", alias="APP_VERSION")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    sentry_dsn: str = Field(default="", alias="SENTRY_DSN")
     brand_path: Path = Field(default=Path("./brand"), alias="BRAND_PATH")
     evolution_base_url: str = Field(
         default="https://evo.zapata.com",
@@ -35,6 +42,11 @@ class Settings(BaseSettings):
     vertex_embedding_model_name: str = Field(
         default="text-embedding-004",
         alias="VERTEX_EMBEDDING_MODEL_NAME",
+    )
+    anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
+    anthropic_model_name: str = Field(
+        default="claude-haiku-4-5-20251001",
+        alias="ANTHROPIC_MODEL_NAME",
     )
     branch_sheet_url: str = Field(
         default=(

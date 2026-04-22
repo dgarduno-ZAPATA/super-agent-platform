@@ -108,6 +108,17 @@ class ChannelsConfig(StrictConfigModel):
     whatsapp: WhatsAppChannelConfig
 
 
+class FallbackUsingFallbackConfig(StrictConfigModel):
+    enabled: bool = False
+
+
+class FallbackMessagesConfig(StrictConfigModel):
+    both_llms_failed: list[str] = Field(default_factory=list)
+    using_fallback: FallbackUsingFallbackConfig = Field(
+        default_factory=FallbackUsingFallbackConfig
+    )
+
+
 class Brand(StrictConfigModel):
     brand: BrandConfig
     funnel: FunnelConfig
@@ -117,4 +128,5 @@ class Brand(StrictConfigModel):
     crm_mapping: CRMMappingConfig
     channels: ChannelsConfig
     fsm: FSMConfig
+    fallback_messages: FallbackMessagesConfig = Field(default_factory=FallbackMessagesConfig)
     prompt: str = Field(min_length=1)

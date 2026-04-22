@@ -6,6 +6,8 @@ from adapters.branches.sheets_adapter import SheetsBranchAdapter
 from adapters.crm.monday_adapter import MondayCRMAdapter
 from adapters.inventory.sheets_adapter import SheetsInventoryAdapter
 from adapters.knowledge.pgvector_adapter import PgVectorKnowledgeAdapter
+from adapters.llm.anthropic_adapter import AnthropicLLMAdapter
+from adapters.llm.resilient_adapter import ResilientLLMAdapter
 from adapters.llm.vertex_adapter import VertexLLMAdapter
 from adapters.messaging.evolution.adapter import EvolutionMessagingAdapter
 from adapters.storage.db import get_session_factory
@@ -126,12 +128,17 @@ def get_inventory_provider(
 
 def get_llm_provider() -> LLMProvider:
     settings = get_settings()
-    return VertexLLMAdapter(
+    primary = VertexLLMAdapter(
         project_id=settings.gcp_project_id,
         region=settings.gcp_region,
         model_name=settings.vertex_model_name,
         embedding_model_name=settings.vertex_embedding_model_name,
     )
+    fallback = AnthropicLLMAdapter(
+        api_key=settings.anthropic_api_key,
+        model_name=settings.anthropic_model_name,
+    )
+    return ResilientLLMAdapter(primary=primary, fallback=fallback)
 
 
 async def get_knowledge_provider(

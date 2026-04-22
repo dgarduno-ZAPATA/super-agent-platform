@@ -1,0 +1,5 @@
+both_llms_failed:
+  - "Disculpa, estoy teniendo problemas tecnicos en este momento. Me permites unos minutos y te escribo de vuelta?"
+  - "Perdona la demora, tengo un problema tecnico. Te contacto en breve."
+using_fallback:
+  enabled: false

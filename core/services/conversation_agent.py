@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
+import sentry_sdk
 import structlog
 
 from core.brand.schema import Brand
@@ -86,7 +87,8 @@ class ConversationAgent:
                 state=session.current_state,
                 correlation_id=correlation_id,
             )
-        except Exception:
+        except Exception as exc:
+            sentry_sdk.capture_exception(exc)
             logger.exception(
                 "conversation_agent_response_failed",
                 conversation_id=str(conversation_id),
@@ -94,6 +96,37 @@ class ConversationAgent:
                 state=session.current_state,
                 correlation_id=correlation_id,
             )
+            fallback_text = self._resolve_llm_failure_message()
+            try:
+                delivery = await self._messaging_provider.send_text(
+                    to=event.from_phone,
+                    text=fallback_text,
+                    correlation_id=correlation_id,
+                )
+                await self._persist_outbound_event(
+                    conversation_id=conversation_id,
+                    lead_id=session.lead_id,
+                    text=fallback_text,
+                    correlation_id=correlation_id,
+                    provider_message_id=delivery.message_id,
+                    state=session.current_state,
+                    llm_metadata={"fallback_type": "both_llms_failed"},
+                )
+                logger.info(
+                    "conversation_agent_failure_fallback_sent",
+                    conversation_id=str(conversation_id),
+                    lead_id=str(session.lead_id),
+                    state=session.current_state,
+                    correlation_id=correlation_id,
+                )
+            except Exception:
+                logger.exception(
+                    "conversation_agent_failure_fallback_send_failed",
+                    conversation_id=str(conversation_id),
+                    lead_id=str(session.lead_id),
+                    state=session.current_state,
+                    correlation_id=correlation_id,
+                )
 
     def _build_system_prompt(self, current_state: str) -> str:
         return (
@@ -180,6 +213,12 @@ class ConversationAgent:
             return messages
 
         return [*messages, current]
+
+    def _resolve_llm_failure_message(self) -> str:
+        configured = self._brand.fallback_messages.both_llms_failed
+        if configured:
+            return configured[0]
+        return "Disculpa, tengo un problema tecnico. Te escribo en breve."
 
     async def _run_tool_calling_loop(
         self,
