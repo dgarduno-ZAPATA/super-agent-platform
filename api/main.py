@@ -46,6 +46,8 @@ def create_app() -> FastAPI:
         environment=settings.environment,
         release=settings.app_version,
     )
+    if settings.sentry_dsn.strip():
+        sentry_sdk.capture_message("sentry_initialized_super_agent_platform", level="info")
 
     app = FastAPI(title="Super Agent Platform")
     app.add_middleware(CorrelationMiddleware)
