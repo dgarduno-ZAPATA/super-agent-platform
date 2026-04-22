@@ -3,11 +3,15 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, HTTPException, Request, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
+from api.dependencies import get_audit_log_service
 from core.auth.jwt_handler import create_access_token
 from core.config import get_settings
+from core.services.audit_log_service import AuditLogService
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -22,8 +26,13 @@ class TokenRequest(BaseModel):
 
 
 @router.post("/token", status_code=status.HTTP_200_OK)
-async def issue_token(payload: TokenRequest, request: Request) -> dict[str, str]:
+async def issue_token(
+    payload: TokenRequest,
+    request: Request,
+    audit_log_service: Annotated[AuditLogService, Depends(get_audit_log_service)],
+) -> dict[str, str]:
     client_host = request.client.host if request.client is not None else "unknown"
+    user_agent = request.headers.get("user-agent")
     now = datetime.now(UTC)
     attempts = _ATTEMPTS_BY_IP[client_host]
     while attempts and now - attempts[0] > _WINDOW:
@@ -38,10 +47,24 @@ async def issue_token(payload: TokenRequest, request: Request) -> dict[str, str]
     settings = get_settings()
     if payload.username != settings.admin_username or payload.password != settings.admin_password:
         attempts.append(now)
+        await audit_log_service.log(
+            actor="admin",
+            action="login_failed",
+            details={"username": payload.username},
+            ip_address=client_host,
+            user_agent=user_agent,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="invalid_credentials",
         )
 
     token = create_access_token({"sub": payload.username})
+    await audit_log_service.log(
+        actor="admin",
+        action="login_success",
+        details={"username": payload.username},
+        ip_address=client_host,
+        user_agent=user_agent,
+    )
     return {"access_token": token, "token_type": "bearer"}

@@ -14,6 +14,7 @@ from adapters.llm.vertex_transcription_adapter import VertexTranscriptionAdapter
 from adapters.messaging.evolution.adapter import EvolutionMessagingAdapter
 from adapters.storage.db import get_session_factory
 from adapters.storage.repositories.crm_outbox_repo import PostgresCRMOutboxRepository
+from adapters.storage.repositories.audit_log_repo import PostgresAuditLogRepository
 from adapters.storage.repositories.event_repo import PostgresConversationEventRepository
 from adapters.storage.repositories.lead_repo import PostgresLeadProfileRepository
 from adapters.storage.repositories.knowledge_repo import PostgresKnowledgeRepository
@@ -40,6 +41,7 @@ from core.ports.repositories import (
 )
 from core.ports.transcription_provider import TranscriptionProvider
 from core.services.campaign_worker import CampaignWorker
+from core.services.audit_log_service import AuditLogService
 from core.services.conversation_agent import ConversationAgent
 from core.services.dashboard_service import DashboardService
 from core.services.handoff_service import HandoffService
@@ -168,6 +170,18 @@ async def get_knowledge_provider(
 
 def get_knowledge_repository() -> PostgresKnowledgeRepository:
     return PostgresKnowledgeRepository()
+
+
+def get_audit_log_repository() -> PostgresAuditLogRepository:
+    return PostgresAuditLogRepository()
+
+
+def get_audit_log_service(
+    audit_log_repository: Annotated[
+        PostgresAuditLogRepository, Depends(get_audit_log_repository)
+    ],
+) -> AuditLogService:
+    return AuditLogService(repo=audit_log_repository)
 
 
 def get_knowledge_ingestion_service() -> KnowledgeIngestionService:

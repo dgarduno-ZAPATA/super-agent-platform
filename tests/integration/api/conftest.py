@@ -71,6 +71,7 @@ def clean_webhook_tables(async_engine_for_test: AsyncEngine) -> None:
                 "crm_outbox",
                 "knowledge_chunks",
                 "knowledge_sources",
+                "audit_log",
                 "conversation_events",
                 "outbound_queue",
                 "sessions",

@@ -11,7 +11,12 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from openai import AsyncOpenAI
 
-from api.dependencies import get_current_user, get_llm_provider
+from adapters.storage.repositories.audit_log_repo import PostgresAuditLogRepository
+from api.dependencies import (
+    get_audit_log_repository,
+    get_current_user,
+    get_llm_provider,
+)
 from core.domain.messaging import ChatMessage
 from core.ports.llm_provider import LLMProvider
 
@@ -185,6 +190,21 @@ async def generate_templates_csv(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"error": str(exc)},
         )
+
+
+@router.get("/admin/audit-log")
+async def get_audit_log(
+    current_user: Annotated[dict[str, object], Depends(get_current_user)],
+    audit_log_repo: Annotated[
+        PostgresAuditLogRepository, Depends(get_audit_log_repository)
+    ],
+    limit: int = 50,
+    offset: int = 0,
+    action: str | None = None,
+) -> dict[str, object]:
+    del current_user
+    entries = await audit_log_repo.list(limit=limit, offset=offset, action=action)
+    return {"entries": entries, "limit": max(1, min(limit, 200)), "offset": max(0, offset)}
 
 
 @router.get("/admin", response_class=HTMLResponse)
@@ -1493,7 +1513,7 @@ async def admin_panel() -> HTMLResponse:
       margin: 0 auto;
       padding: 24px 0;
     }
-    .dashboard, .campaigns, .templates, .csvgen, .conversations, .monitor, .placeholder {
+    .dashboard, .campaigns, .templates, .csvgen, .conversations, .monitor, .audit-log, .placeholder {
       padding: 24px 0;
       animation: tabFade 0.15s ease;
     }
@@ -2453,6 +2473,35 @@ async def admin_panel() -> HTMLResponse:
       border-radius: 4px;
       padding: 4px 8px;
     }
+    .audit-controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .audit-table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+    .audit-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.84rem;
+    }
+    .audit-table th, .audit-table td {
+      border-bottom: 1px solid var(--border);
+      padding: 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+    .audit-table th {
+      color: var(--text-secondary);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
   </style>
 </head>
 <body>
@@ -2496,6 +2545,7 @@ async def admin_panel() -> HTMLResponse:
         <button class="tab" data-tab="conversaciones" type="button" role="tab" aria-selected="false" tabindex="-1">Conversaciones</button>
         <button class="tab" data-tab="monitor" type="button" role="tab" aria-selected="false" tabindex="-1">Monitor</button>
         <button class="tab" data-tab="knowledge" type="button" role="tab" aria-selected="false" tabindex="-1">Base de conocimiento</button>
+        <button class="tab" data-tab="audit_log" type="button" role="tab" aria-selected="false" tabindex="-1">Registro actividad</button>
       </nav>
     </header>
     <main class="content">
@@ -2814,6 +2864,38 @@ async def admin_panel() -> HTMLResponse:
         </section>
       </section>
 
+      <section id="audit-log-view" class="audit-log hidden" aria-label="Registro de actividad">
+        <div class="section-heading">
+          <span class="section-heading-text">Registro de actividad</span>
+          <span class="section-heading-line"></span>
+        </div>
+        <section class="csvgen-card">
+          <div class="audit-controls">
+            <input id="audit-action-filter" class="template-input" type="text" placeholder="Filtrar por acción (ej. login_success)" style="max-width:320px;" />
+            <button id="audit-filter-btn" class="csvgen-btn" type="button">Filtrar</button>
+            <button id="audit-clear-btn" class="csvgen-btn" type="button">Limpiar</button>
+          </div>
+          <div class="audit-table-wrap">
+            <table class="audit-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Acción</th>
+                  <th>Recurso</th>
+                  <th>IP</th>
+                </tr>
+              </thead>
+              <tbody id="audit-log-body"></tbody>
+            </table>
+          </div>
+          <div class="audit-controls" style="margin-top:10px;">
+            <button id="audit-prev-btn" class="csvgen-btn" type="button">Anterior</button>
+            <button id="audit-next-btn" class="csvgen-btn" type="button">Siguiente</button>
+            <span id="audit-page-label" class="csvgen-note">Página 1</span>
+          </div>
+        </section>
+      </section>
+
       <div id="tab-placeholder" class="placeholder hidden">Selecciona una pestaña para continuar.</div>
     </main>
   </div>
@@ -2937,6 +3019,14 @@ async def admin_panel() -> HTMLResponse:
     const knowledgeFileInput = document.getElementById("knowledge-file-input");
     const knowledgeStatus = document.getElementById("knowledge-status");
     const knowledgeSourcesList = document.getElementById("knowledge-sources-list");
+    const auditLogView = document.getElementById("audit-log-view");
+    const auditActionFilter = document.getElementById("audit-action-filter");
+    const auditFilterBtn = document.getElementById("audit-filter-btn");
+    const auditClearBtn = document.getElementById("audit-clear-btn");
+    const auditLogBody = document.getElementById("audit-log-body");
+    const auditPrevBtn = document.getElementById("audit-prev-btn");
+    const auditNextBtn = document.getElementById("audit-next-btn");
+    const auditPageLabel = document.getElementById("audit-page-label");
     const navClock = document.getElementById("nav-clock");
     const brandLogo = document.getElementById("brand-logo");
     const brandSupportPhone = document.getElementById("brand-support-phone");
@@ -2959,6 +3049,8 @@ async def admin_panel() -> HTMLResponse:
     let csvgenDetectedColumns = null;
     let csvgenGeneratedBlob = null;
     let brandConfig = { ...BRAND_DEFAULTS };
+    let auditOffset = 0;
+    const auditLimit = 50;
 
     const templateCampaignExamples = {
       lost: `[Hola|Buenas|Qué tal] {nombre}, [te escribo|te contacto] de {company_name}.
@@ -4464,6 +4556,47 @@ con [tu unidad|el {vehiculo}]?`,
       }
     }
 
+    function renderAuditEntries(entries) {
+      if (!Array.isArray(entries) || entries.length === 0) {
+        auditLogBody.innerHTML = `<tr><td colspan="4" class="csvgen-note">Sin actividad registrada.</td></tr>`;
+        return;
+      }
+      auditLogBody.innerHTML = entries.map((item) => {
+        const ts = escapeHtml(String(item.timestamp || "N/A"));
+        const action = escapeHtml(String(item.action || "N/A"));
+        const resource = `${escapeHtml(String(item.resource_type || "-"))} / ${escapeHtml(String(item.resource_id || "-"))}`;
+        const ip = escapeHtml(String(item.ip_address || "-"));
+        return `<tr><td>${ts}</td><td>${action}</td><td>${resource}</td><td>${ip}</td></tr>`;
+      }).join("");
+    }
+
+    async function loadAuditLog() {
+      const action = (auditActionFilter.value || "").trim();
+      const query = new URLSearchParams({
+        limit: String(auditLimit),
+        offset: String(auditOffset),
+      });
+      if (action) {
+        query.set("action", action);
+      }
+
+      try {
+        const response = await apiFetch(`/admin/audit-log?${query.toString()}`, { method: "GET" });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || `http_${response.status}`);
+        }
+        renderAuditEntries(payload.entries || []);
+        const currentPage = Math.floor(auditOffset / auditLimit) + 1;
+        auditPageLabel.textContent = `Página ${currentPage}`;
+        auditPrevBtn.disabled = auditOffset === 0;
+        auditNextBtn.disabled = !Array.isArray(payload.entries) || payload.entries.length < auditLimit;
+      } catch (error) {
+        renderAuditEntries([]);
+        auditPageLabel.textContent = "Error cargando registro";
+      }
+    }
+
     function stopDashboardRefresh() {
       if (dashboardRefreshTimer !== null) {
         clearInterval(dashboardRefreshTimer);
@@ -4539,6 +4672,7 @@ con [tu unidad|el {vehiculo}]?`,
         conversationsView.classList.add("hidden");
         monitorView.classList.add("hidden");
         knowledgeView.classList.add("hidden");
+        auditLogView.classList.add("hidden");
         dashboardView.classList.remove("hidden");
         loadDashboardStats();
         startDashboardRefresh();
@@ -4555,6 +4689,7 @@ con [tu unidad|el {vehiculo}]?`,
         conversationsView.classList.add("hidden");
         monitorView.classList.add("hidden");
         knowledgeView.classList.add("hidden");
+        auditLogView.classList.add("hidden");
         campaignsView.classList.remove("hidden");
         loadCampaignsState();
         startCampaignsRefresh();
@@ -4571,6 +4706,7 @@ con [tu unidad|el {vehiculo}]?`,
         conversationsView.classList.add("hidden");
         monitorView.classList.add("hidden");
         knowledgeView.classList.add("hidden");
+        auditLogView.classList.add("hidden");
         templatesView.classList.remove("hidden");
         runTemplateLiveAnalysis();
         if (templateBubbles.children.length === 0) {
@@ -4591,6 +4727,7 @@ con [tu unidad|el {vehiculo}]?`,
         monitorView.classList.add("hidden");
         csvgenView.classList.remove("hidden");
         knowledgeView.classList.add("hidden");
+        auditLogView.classList.add("hidden");
         return;
       }
 
@@ -4604,6 +4741,7 @@ con [tu unidad|el {vehiculo}]?`,
         csvgenView.classList.add("hidden");
         monitorView.classList.add("hidden");
         knowledgeView.classList.add("hidden");
+        auditLogView.classList.add("hidden");
         conversationsView.classList.remove("hidden");
         if (!currentTraceData) {
           convSummaryCard.classList.add("hidden");
@@ -4623,6 +4761,7 @@ con [tu unidad|el {vehiculo}]?`,
         conversationsView.classList.add("hidden");
         monitorView.classList.remove("hidden");
         knowledgeView.classList.add("hidden");
+        auditLogView.classList.add("hidden");
         loadMonitorStats();
         startMonitorRefresh();
         return;
@@ -4639,7 +4778,24 @@ con [tu unidad|el {vehiculo}]?`,
         conversationsView.classList.add("hidden");
         monitorView.classList.add("hidden");
         knowledgeView.classList.remove("hidden");
+        auditLogView.classList.add("hidden");
         loadKnowledgeSources();
+        return;
+      }
+
+      if (tabName === "audit_log") {
+        stopCampaignsRefresh();
+        stopMonitorRefresh();
+        tabPlaceholder.classList.add("hidden");
+        dashboardView.classList.add("hidden");
+        campaignsView.classList.add("hidden");
+        templatesView.classList.add("hidden");
+        csvgenView.classList.add("hidden");
+        conversationsView.classList.add("hidden");
+        monitorView.classList.add("hidden");
+        knowledgeView.classList.add("hidden");
+        auditLogView.classList.remove("hidden");
+        loadAuditLog();
         return;
       }
 
@@ -4652,6 +4808,7 @@ con [tu unidad|el {vehiculo}]?`,
       conversationsView.classList.add("hidden");
       monitorView.classList.add("hidden");
       knowledgeView.classList.add("hidden");
+      auditLogView.classList.add("hidden");
       tabPlaceholder.classList.remove("hidden");
       const activeLabel = tabs.querySelector(`.tab[data-tab="${tabName}"]`)?.textContent || "Sección";
       tabPlaceholder.textContent = `Sección "${activeLabel}" lista para implementar.`;
@@ -4832,6 +4989,27 @@ con [tu unidad|el {vehiculo}]?`,
         return;
       }
       deleteKnowledgeSource(sourceLabel);
+    });
+
+    auditFilterBtn.addEventListener("click", () => {
+      auditOffset = 0;
+      loadAuditLog();
+    });
+
+    auditClearBtn.addEventListener("click", () => {
+      auditActionFilter.value = "";
+      auditOffset = 0;
+      loadAuditLog();
+    });
+
+    auditPrevBtn.addEventListener("click", () => {
+      auditOffset = Math.max(0, auditOffset - auditLimit);
+      loadAuditLog();
+    });
+
+    auditNextBtn.addEventListener("click", () => {
+      auditOffset += auditLimit;
+      loadAuditLog();
     });
 
     loginForm.addEventListener("submit", async (event) => {
