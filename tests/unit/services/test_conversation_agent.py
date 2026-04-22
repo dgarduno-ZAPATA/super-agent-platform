@@ -309,3 +309,58 @@ async def test_tool_call_flow_executes_skill_and_returns_final_text() -> None:
         for message in second_call_messages
     )
     assert messaging.sent_messages[0]["text"] == "Te comparto opciones de inventario disponibles."
+
+
+@pytest.mark.asyncio
+async def test_respond_uses_supplied_history_and_keeps_current_message_last() -> None:
+    brand = load_brand(Path("brand"))
+    llm = FakeLLMProvider(content="Te comparto opciones de rabon disponibles.")
+    messaging = FakeMessagingProvider()
+    event_repo = FakeConversationEventRepository()
+    agent = ConversationAgent(
+        llm_provider=llm,
+        messaging_provider=messaging,
+        brand=brand,
+        conversation_event_repository=event_repo,
+        skill_registry=FakeSkillRegistry(),
+    )
+    conversation_id = _conversation_id()
+    now = datetime.now(UTC)
+    history = [
+        ConversationEvent(
+            id=uuid4(),
+            conversation_id=conversation_id,
+            lead_id=None,
+            event_type="inbound_message",
+            payload={"text": "Que camiones tienen?"},
+            created_at=now,
+            message_id="inbound-history-1",
+        ),
+        ConversationEvent(
+            id=uuid4(),
+            conversation_id=conversation_id,
+            lead_id=None,
+            event_type="outbound_message",
+            payload={"text": "Para orientarte mejor, que tipo de camion buscas?"},
+            created_at=now,
+            message_id="outbound-history-1",
+        ),
+    ]
+    session = _session("discovery")
+
+    await agent.respond(
+        _event("Busco un rabon"),
+        session,
+        conversation_history=history,
+    )
+
+    first_call_messages = llm.calls[0]["messages"]
+    assert isinstance(first_call_messages, list)
+    assert len(first_call_messages) == 3
+    assert first_call_messages[0] == ChatMessage(role="user", content="Que camiones tienen?")
+    assert first_call_messages[1] == ChatMessage(
+        role="assistant",
+        content="Para orientarte mejor, que tipo de camion buscas?",
+    )
+    assert first_call_messages[2] == ChatMessage(role="user", content="Busco un rabon")
+    assert messaging.sent_messages[0]["text"] == "Te comparto opciones de rabon disponibles."

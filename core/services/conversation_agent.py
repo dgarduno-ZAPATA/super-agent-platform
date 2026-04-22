@@ -33,22 +33,31 @@ class ConversationAgent:
         self._conversation_event_repository = conversation_event_repository
         self._skill_registry = skill_registry
 
-    async def respond(self, event: InboundEvent, session: Session) -> None:
+    async def respond(
+        self,
+        event: InboundEvent,
+        session: Session,
+        conversation_history: list[ConversationEvent] | None = None,
+    ) -> None:
         correlation_id = self._extract_correlation_id(event)
         conversation_id = self._build_conversation_id(event.from_phone)
 
         try:
-            history = await self._conversation_event_repository.list_by_conversation(
-                conversation_id=conversation_id,
-                limit=15,
-            )
+            history = conversation_history
+            if history is None:
+                history = await self._conversation_event_repository.list_by_conversation(
+                    conversation_id=conversation_id,
+                    limit=30,
+                )
+
             messages = self._format_history_as_messages(history)
+            messages = self._ensure_current_user_message(messages=messages, event=event)
             if not messages:
                 messages = [self._build_user_message(event)]
 
             system_prompt = self._build_system_prompt(session.current_state)
             llm_response = await self._run_tool_calling_loop(
-                messages=messages[-15:],
+                messages=messages[-20:],
                 system_prompt=system_prompt,
                 context=SkillExecutionContext(
                     phone=event.from_phone,
@@ -154,6 +163,23 @@ class ConversationAgent:
     @staticmethod
     def _build_user_message(event: InboundEvent) -> ChatMessage:
         return ChatMessage(role="user", content=(event.text or "").strip())
+
+    @staticmethod
+    def _ensure_current_user_message(
+        messages: list[ChatMessage], event: InboundEvent
+    ) -> list[ChatMessage]:
+        current = ConversationAgent._build_user_message(event)
+        if not current.content:
+            return messages
+
+        if not messages:
+            return [current]
+
+        last = messages[-1]
+        if last.role == "user" and last.content == current.content:
+            return messages
+
+        return [*messages, current]
 
     async def _run_tool_calling_loop(
         self,

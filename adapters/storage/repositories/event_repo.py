@@ -67,11 +67,12 @@ class PostgresConversationEventRepository(ConversationEventRepository):
             statement = (
                 select(ConversationEventModel)
                 .where(ConversationEventModel.conversation_id == conversation_id)
-                .order_by(ConversationEventModel.created_at.asc())
+                .order_by(ConversationEventModel.created_at.desc())
                 .limit(limit)
             )
             result = await session.execute(statement)
-            models = result.scalars().all()
+            models = list(result.scalars().all())
+            models.reverse()
 
         return [_to_domain(model) for model in models]
 

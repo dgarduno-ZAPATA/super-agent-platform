@@ -126,8 +126,13 @@ class FakeTranscriptionProvider:
 
 
 class FakeConversationAgent:
-    async def respond(self, event: InboundEvent, session: Session) -> None:
-        del event, session
+    async def respond(
+        self,
+        event: InboundEvent,
+        session: Session,
+        conversation_history: list[ConversationEvent] | None = None,
+    ) -> None:
+        del event, session, conversation_history
         return None
 
 

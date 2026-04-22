@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 import pytest
 
@@ -204,10 +204,15 @@ class FakeTranscriptionProvider:
 
 class FakeConversationAgent:
     def __init__(self) -> None:
-        self.calls: list[tuple[InboundEvent, Session]] = []
+        self.calls: list[tuple[InboundEvent, Session, list[ConversationEvent] | None]] = []
 
-    async def respond(self, event: InboundEvent, session: Session) -> None:
-        self.calls.append((event, session))
+    async def respond(
+        self,
+        event: InboundEvent,
+        session: Session,
+        conversation_history: list[ConversationEvent] | None = None,
+    ) -> None:
+        self.calls.append((event, session, conversation_history))
 
 
 class FakeOrchestrator:
@@ -256,12 +261,12 @@ class FakeBranchProvider:
         return None
 
 
-def _build_event(kind: MessageKind = MessageKind.TEXT) -> InboundEvent:
+def _build_event(kind: MessageKind = MessageKind.TEXT, text: str = "Hola") -> InboundEvent:
     return InboundEvent(
         message_id="wamid-001",
         from_phone="5214421234567",
         kind=kind,
-        text="Hola" if kind is MessageKind.TEXT else None,
+        text=text if kind is MessageKind.TEXT else None,
         media_url="https://cdn.example.com/audio.ogg" if kind is MessageKind.AUDIO else None,
         raw_metadata={"push_name": "Cliente Demo"},
         received_at=datetime.now(UTC),
@@ -629,3 +634,62 @@ async def test_handoff_active_session_persists_event_and_skips_bot_processing() 
     assert len(crm_outbox_repo.enqueued) == 0
     assert orchestrator.calls == 0
     assert len(conversation_agent.calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_conversation_intent_passes_recent_dialog_history_to_agent() -> None:
+    event_repo = FakeConversationEventRepository()
+    lead_repo = FakeLeadProfileRepository()
+    crm_outbox_repo = FakeCRMOutboxRepository()
+    session_repo = FakeSessionRepository()
+    silenced_repo = FakeSilencedUserRepository()
+    transcription_provider = FakeTranscriptionProvider()
+    conversation_agent = FakeConversationAgent()
+    phone = "5214421234567"
+    conversation_id = uuid5(NAMESPACE_URL, f"whatsapp:{phone}")
+    now = datetime.now(UTC)
+
+    for index in range(12):
+        event_repo.events.append(
+            ConversationEvent(
+                id=UUID(f"00000000-0000-0000-0000-0000000000{index + 1:02d}"),
+                conversation_id=conversation_id,
+                lead_id=None,
+                event_type="inbound_message" if index % 2 == 0 else "outbound_message",
+                payload={
+                    "text": (
+                        "Que camiones tienen?"
+                        if index == 8
+                        else (
+                            "Para orientarte mejor, que tipo de camion buscas?"
+                            if index == 9
+                            else f"evento-{index + 1}"
+                        )
+                    )
+                },
+                created_at=now,
+                message_id=f"historic-{index + 1}",
+            )
+        )
+
+    handler = _build_handler(
+        messaging_provider=FakeMessagingProvider(event=_build_event(text="Busco un rabon")),
+        event_repo=event_repo,
+        lead_repo=lead_repo,
+        crm_outbox_repo=crm_outbox_repo,
+        session_repo=session_repo,
+        silenced_repo=silenced_repo,
+        transcription_provider=transcription_provider,
+        conversation_agent=conversation_agent,
+    )
+
+    result = await handler.handle({"any": "payload"})
+
+    assert result.processed is True
+    assert len(conversation_agent.calls) == 1
+    _, _, history = conversation_agent.calls[0]
+    assert history is not None
+    assert len(history) == 10
+    assert history[-1].payload["text"] == "Busco un rabon"
+    texts = [str(item.payload.get("text", "")) for item in history]
+    assert "Para orientarte mejor, que tipo de camion buscas?" in texts

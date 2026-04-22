@@ -242,7 +242,15 @@ class InboundMessageHandler:
         elif classification.intent == "unsupported":
             await self._send_unsupported_message(enriched_inbound_event)
         else:
-            await self._conversation_agent.respond(enriched_inbound_event, updated_session)
+            conversation_history = await self._build_recent_conversation_history(
+                conversation_id=conversation_id,
+                limit=10,
+            )
+            await self._conversation_agent.respond(
+                enriched_inbound_event,
+                updated_session,
+                conversation_history=conversation_history,
+            )
 
         logger.info(
             "inbound_webhook_processed",
@@ -548,6 +556,22 @@ class InboundMessageHandler:
             return "Sin contexto adicional."
 
         return " | ".join(fragments[-3:])
+
+    async def _build_recent_conversation_history(
+        self,
+        conversation_id: UUID,
+        limit: int = 10,
+    ) -> list[ConversationEvent]:
+        events = await self._conversation_event_repository.list_by_conversation(
+            conversation_id=conversation_id,
+            limit=50,
+        )
+        dialogue_events = [
+            event
+            for event in events
+            if event.event_type in {"inbound_message", "outbound_message"}
+        ]
+        return dialogue_events[-limit:]
 
     async def _activate_handoff_session(
         self,
