@@ -2516,6 +2516,10 @@ async def admin_panel() -> HTMLResponse:
         <input id="username" name="username" type="text" autocomplete="username" required />
         <label for="password">Password</label>
         <input id="password" name="password" type="password" autocomplete="current-password" required />
+        <div id="login-2fa-wrap" class="hidden">
+          <label for="login-2fa-code">Código de autenticación (6 dígitos)</label>
+          <input id="login-2fa-code" name="login_2fa_code" type="text" inputmode="numeric" maxlength="8" autocomplete="one-time-code" />
+        </div>
         <button class="btn-primary" type="submit">Entrar</button>
       </form>
       <div id="login-error" class="error"></div>
@@ -2545,6 +2549,7 @@ async def admin_panel() -> HTMLResponse:
         <button class="tab" data-tab="conversaciones" type="button" role="tab" aria-selected="false" tabindex="-1">Conversaciones</button>
         <button class="tab" data-tab="monitor" type="button" role="tab" aria-selected="false" tabindex="-1">Monitor</button>
         <button class="tab" data-tab="knowledge" type="button" role="tab" aria-selected="false" tabindex="-1">Base de conocimiento</button>
+        <button class="tab" data-tab="security" type="button" role="tab" aria-selected="false" tabindex="-1">Seguridad</button>
         <button class="tab" data-tab="audit_log" type="button" role="tab" aria-selected="false" tabindex="-1">Registro actividad</button>
       </nav>
     </header>
@@ -2896,6 +2901,31 @@ async def admin_panel() -> HTMLResponse:
         </section>
       </section>
 
+      <section id="security-view" class="csvgen hidden" aria-label="Seguridad">
+        <div class="section-heading">
+          <span class="section-heading-text">Seguridad</span>
+          <span class="section-heading-line"></span>
+        </div>
+        <section class="csvgen-card">
+          <div id="security-2fa-status" class="csvgen-note">2FA: Inactivo</div>
+          <div class="csvgen-actions">
+            <button id="security-2fa-setup-btn" class="csvgen-btn primary" type="button">Activar 2FA</button>
+          </div>
+          <div id="security-2fa-setup-wrap" class="hidden">
+            <p class="csvgen-note">Escanea este QR en Google Authenticator/Authy y confirma con un código.</p>
+            <img id="security-2fa-qr" alt="QR 2FA" style="max-width:220px; border:1px solid var(--border); border-radius:4px; padding:6px; background:#fff;" />
+            <div class="csvgen-note">Secret: <code id="security-2fa-secret"></code></div>
+            <div style="max-width:320px; margin-top:8px;">
+              <label for="security-2fa-code">Ingresa el código de tu app</label>
+              <input id="security-2fa-code" class="template-input" type="text" inputmode="numeric" maxlength="8" />
+            </div>
+            <div class="csvgen-actions">
+              <button id="security-2fa-confirm-btn" class="csvgen-btn primary" type="button">Confirmar y activar</button>
+            </div>
+          </div>
+        </section>
+      </section>
+
       <div id="tab-placeholder" class="placeholder hidden">Selecciona una pestaña para continuar.</div>
     </main>
   </div>
@@ -2926,6 +2956,8 @@ async def admin_panel() -> HTMLResponse:
     const panelScreen = document.getElementById("panel-screen");
     const loginForm = document.getElementById("login-form");
     const loginError = document.getElementById("login-error");
+    const login2faWrap = document.getElementById("login-2fa-wrap");
+    const login2faCode = document.getElementById("login-2fa-code");
     const tabs = document.getElementById("tabs");
     const tabPlaceholder = document.getElementById("tab-placeholder");
     const toastWrap = document.getElementById("toast-wrap");
@@ -3019,6 +3051,14 @@ async def admin_panel() -> HTMLResponse:
     const knowledgeFileInput = document.getElementById("knowledge-file-input");
     const knowledgeStatus = document.getElementById("knowledge-status");
     const knowledgeSourcesList = document.getElementById("knowledge-sources-list");
+    const securityView = document.getElementById("security-view");
+    const security2faStatus = document.getElementById("security-2fa-status");
+    const security2faSetupBtn = document.getElementById("security-2fa-setup-btn");
+    const security2faSetupWrap = document.getElementById("security-2fa-setup-wrap");
+    const security2faQr = document.getElementById("security-2fa-qr");
+    const security2faSecret = document.getElementById("security-2fa-secret");
+    const security2faCode = document.getElementById("security-2fa-code");
+    const security2faConfirmBtn = document.getElementById("security-2fa-confirm-btn");
     const auditLogView = document.getElementById("audit-log-view");
     const auditActionFilter = document.getElementById("audit-action-filter");
     const auditFilterBtn = document.getElementById("audit-filter-btn");
@@ -3049,6 +3089,7 @@ async def admin_panel() -> HTMLResponse:
     let csvgenDetectedColumns = null;
     let csvgenGeneratedBlob = null;
     let brandConfig = { ...BRAND_DEFAULTS };
+    let pendingPreAuthToken = null;
     let auditOffset = 0;
     const auditLimit = 50;
 
@@ -3138,6 +3179,9 @@ con [tu unidad|el {vehiculo}]?`,
     }
 
     function showLogin() {
+      pendingPreAuthToken = null;
+      login2faWrap.classList.add("hidden");
+      login2faCode.value = "";
       panelScreen.classList.add("hidden");
       loginScreen.classList.remove("hidden");
     }
@@ -4597,6 +4641,59 @@ con [tu unidad|el {vehiculo}]?`,
       }
     }
 
+    async function load2faStatus() {
+      try {
+        const response = await apiFetch("/api/v1/auth/2fa/status", { method: "GET" });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || `http_${response.status}`);
+        }
+        security2faStatus.textContent = payload.enabled ? "2FA: Activo ✓" : "2FA: Inactivo";
+      } catch (error) {
+        security2faStatus.textContent = "2FA: Estado no disponible";
+      }
+    }
+
+    async function setup2fa() {
+      try {
+        const response = await apiFetch("/api/v1/auth/2fa/setup", { method: "POST" });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || `http_${response.status}`);
+        }
+        security2faQr.src = payload.qr_code;
+        security2faSecret.textContent = payload.secret || "";
+        security2faSetupWrap.classList.remove("hidden");
+        showToast("info", "Escanea el QR y confirma con un código.");
+      } catch (error) {
+        showToast("error", `No se pudo iniciar setup 2FA: ${error.message || error}`);
+      }
+    }
+
+    async function confirm2fa() {
+      const code = (security2faCode.value || "").trim();
+      if (!code) {
+        showToast("error", "Ingresa el código TOTP.");
+        return;
+      }
+      try {
+        const response = await apiFetch("/api/v1/auth/2fa/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || `http_${response.status}`);
+        }
+        showToast("success", "2FA activado correctamente.");
+        security2faCode.value = "";
+        await load2faStatus();
+      } catch (error) {
+        showToast("error", `No se pudo activar 2FA: ${error.message || error}`);
+      }
+    }
+
     function stopDashboardRefresh() {
       if (dashboardRefreshTimer !== null) {
         clearInterval(dashboardRefreshTimer);
@@ -4672,6 +4769,7 @@ con [tu unidad|el {vehiculo}]?`,
         conversationsView.classList.add("hidden");
         monitorView.classList.add("hidden");
         knowledgeView.classList.add("hidden");
+        securityView.classList.add("hidden");
         auditLogView.classList.add("hidden");
         dashboardView.classList.remove("hidden");
         loadDashboardStats();
@@ -4689,6 +4787,7 @@ con [tu unidad|el {vehiculo}]?`,
         conversationsView.classList.add("hidden");
         monitorView.classList.add("hidden");
         knowledgeView.classList.add("hidden");
+        securityView.classList.add("hidden");
         auditLogView.classList.add("hidden");
         campaignsView.classList.remove("hidden");
         loadCampaignsState();
@@ -4706,6 +4805,7 @@ con [tu unidad|el {vehiculo}]?`,
         conversationsView.classList.add("hidden");
         monitorView.classList.add("hidden");
         knowledgeView.classList.add("hidden");
+        securityView.classList.add("hidden");
         auditLogView.classList.add("hidden");
         templatesView.classList.remove("hidden");
         runTemplateLiveAnalysis();
@@ -4727,6 +4827,7 @@ con [tu unidad|el {vehiculo}]?`,
         monitorView.classList.add("hidden");
         csvgenView.classList.remove("hidden");
         knowledgeView.classList.add("hidden");
+        securityView.classList.add("hidden");
         auditLogView.classList.add("hidden");
         return;
       }
@@ -4741,6 +4842,7 @@ con [tu unidad|el {vehiculo}]?`,
         csvgenView.classList.add("hidden");
         monitorView.classList.add("hidden");
         knowledgeView.classList.add("hidden");
+        securityView.classList.add("hidden");
         auditLogView.classList.add("hidden");
         conversationsView.classList.remove("hidden");
         if (!currentTraceData) {
@@ -4761,6 +4863,7 @@ con [tu unidad|el {vehiculo}]?`,
         conversationsView.classList.add("hidden");
         monitorView.classList.remove("hidden");
         knowledgeView.classList.add("hidden");
+        securityView.classList.add("hidden");
         auditLogView.classList.add("hidden");
         loadMonitorStats();
         startMonitorRefresh();
@@ -4778,8 +4881,26 @@ con [tu unidad|el {vehiculo}]?`,
         conversationsView.classList.add("hidden");
         monitorView.classList.add("hidden");
         knowledgeView.classList.remove("hidden");
+        securityView.classList.add("hidden");
         auditLogView.classList.add("hidden");
         loadKnowledgeSources();
+        return;
+      }
+
+      if (tabName === "security") {
+        stopCampaignsRefresh();
+        stopMonitorRefresh();
+        tabPlaceholder.classList.add("hidden");
+        dashboardView.classList.add("hidden");
+        campaignsView.classList.add("hidden");
+        templatesView.classList.add("hidden");
+        csvgenView.classList.add("hidden");
+        conversationsView.classList.add("hidden");
+        monitorView.classList.add("hidden");
+        knowledgeView.classList.add("hidden");
+        securityView.classList.remove("hidden");
+        auditLogView.classList.add("hidden");
+        load2faStatus();
         return;
       }
 
@@ -4794,6 +4915,7 @@ con [tu unidad|el {vehiculo}]?`,
         conversationsView.classList.add("hidden");
         monitorView.classList.add("hidden");
         knowledgeView.classList.add("hidden");
+        securityView.classList.add("hidden");
         auditLogView.classList.remove("hidden");
         loadAuditLog();
         return;
@@ -4808,6 +4930,7 @@ con [tu unidad|el {vehiculo}]?`,
       conversationsView.classList.add("hidden");
       monitorView.classList.add("hidden");
       knowledgeView.classList.add("hidden");
+      securityView.classList.add("hidden");
       auditLogView.classList.add("hidden");
       tabPlaceholder.classList.remove("hidden");
       const activeLabel = tabs.querySelector(`.tab[data-tab="${tabName}"]`)?.textContent || "Sección";
@@ -5012,49 +5135,92 @@ con [tu unidad|el {vehiculo}]?`,
       loadAuditLog();
     });
 
+    security2faSetupBtn.addEventListener("click", () => {
+      setup2fa();
+    });
+
+    security2faConfirmBtn.addEventListener("click", () => {
+      confirm2fa();
+    });
+
     loginForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       loginError.textContent = "";
       const submitBtn = loginForm.querySelector("button[type='submit']");
       const inputs = loginForm.querySelectorAll("input");
       submitBtn.disabled = true;
-      submitBtn.innerHTML = '<span class="spinner btn-spinner" aria-hidden="true"></span><span>Entrando...</span>';
+      submitBtn.innerHTML = '<span class="spinner btn-spinner" aria-hidden="true"></span><span>Procesando...</span>';
       inputs.forEach((i) => { i.disabled = true; });
       const formData = new FormData(loginForm);
       const username = String(formData.get("username") || "");
       const password = String(formData.get("password") || "");
+      const code = String(formData.get("login_2fa_code") || "").trim();
       const restoreLogin = () => {
         submitBtn.disabled = false;
-        submitBtn.innerHTML = "Entrar";
+        submitBtn.innerHTML = pendingPreAuthToken ? "Verificar código" : "Entrar";
         inputs.forEach((i) => { i.disabled = false; });
       };
       try {
-        const response = await fetch("/api/v1/auth/token", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, password }),
-        });
-
-        if (response.status === 401) {
-          loginError.textContent = "Credenciales incorrectas";
-          showToast("error", "Credenciales incorrectas");
-          restoreLogin();
-          return;
+        let accessToken = "";
+        if (pendingPreAuthToken) {
+          const response = await fetch("/api/v1/auth/2fa/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pre_auth_token: pendingPreAuthToken, code }),
+          });
+          const payload = await response.json();
+          if (!response.ok) {
+            loginError.textContent = payload.detail || "Código inválido";
+            showToast("error", payload.detail || "No se pudo validar el código");
+            restoreLogin();
+            return;
+          }
+          accessToken = String(payload.access_token || "");
+        } else {
+          const response = await fetch("/api/v1/auth/token", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password }),
+          });
+          const payload = await response.json();
+          if (response.status === 401) {
+            loginError.textContent = "Credenciales incorrectas";
+            showToast("error", "Credenciales incorrectas");
+            restoreLogin();
+            return;
+          }
+          if (response.status === 429) {
+            loginError.textContent = payload.detail || "Demasiados intentos";
+            showToast("error", payload.detail || "Demasiados intentos");
+            restoreLogin();
+            return;
+          }
+          if (!response.ok) {
+            showToast("error", payload.detail || "No se pudo iniciar sesión");
+            restoreLogin();
+            return;
+          }
+          if (payload.requires_2fa) {
+            pendingPreAuthToken = String(payload.pre_auth_token || "");
+            login2faWrap.classList.remove("hidden");
+            submitBtn.innerHTML = "Verificar código";
+            showToast("info", "Ingresa tu código de autenticación.");
+            restoreLogin();
+            return;
+          }
+          accessToken = String(payload.access_token || "");
         }
 
-        if (!response.ok) {
-          showToast("error", "No se pudo iniciar sesión");
-          restoreLogin();
-          return;
-        }
-
-        const payload = await response.json();
-        if (!payload.access_token) {
+        if (!accessToken) {
           showToast("error", "Respuesta de autenticación inválida");
+          restoreLogin();
           return;
         }
 
-        setToken(payload.access_token);
+        pendingPreAuthToken = null;
+        login2faWrap.classList.add("hidden");
+        login2faCode.value = "";
+        setToken(accessToken);
         await loadBrandConfig();
         showPanel();
         setActiveTab("dashboard");

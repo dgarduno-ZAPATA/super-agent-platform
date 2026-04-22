@@ -66,6 +66,9 @@ def _cleanup_all_test_data() -> None:
             for table_name in [
                 "crm_dlq",
                 "crm_outbox",
+                "admin_totp",
+                "login_attempts",
+                "audit_log",
                 "conversation_events",
                 "outbound_queue",
                 "sessions",

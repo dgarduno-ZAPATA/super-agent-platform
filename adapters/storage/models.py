@@ -297,3 +297,17 @@ class LoginAttemptModel(Base):
     success: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
 
     __table_args__ = (Index("idx_login_attempts_ip_time", "ip_address", "attempted_at"),)
+
+
+class AdminTOTPModel(Base):
+    __tablename__ = "admin_totp"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    username: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    totp_secret: Mapped[str] = mapped_column(Text, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )

@@ -15,6 +15,7 @@ from adapters.messaging.evolution.adapter import EvolutionMessagingAdapter
 from adapters.storage.db import get_session_factory
 from adapters.storage.repositories.crm_outbox_repo import PostgresCRMOutboxRepository
 from adapters.storage.repositories.audit_log_repo import PostgresAuditLogRepository
+from adapters.storage.repositories.admin_totp_repo import PostgresAdminTOTPRepository
 from adapters.storage.repositories.event_repo import PostgresConversationEventRepository
 from adapters.storage.repositories.lead_repo import PostgresLeadProfileRepository
 from adapters.storage.repositories.login_attempt_repo import PostgresLoginAttemptRepository
@@ -196,6 +197,10 @@ def get_login_attempt_service(
     ],
 ) -> LoginAttemptService:
     return LoginAttemptService(repo=login_attempt_repository)
+
+
+def get_admin_totp_repository() -> PostgresAdminTOTPRepository:
+    return PostgresAdminTOTPRepository()
 
 
 def get_knowledge_ingestion_service() -> KnowledgeIngestionService:
