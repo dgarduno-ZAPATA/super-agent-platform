@@ -48,6 +48,8 @@ class Settings(BaseSettings):
         default="gpt-4o-mini",
         alias="OPENAI_MODEL_NAME",
     )
+    monday_api_key: str = ""
+    monday_board_id: str = ""
     branch_sheet_url: str = Field(
         default=(
             "https://docs.google.com/spreadsheets/d/e/2PACX-1vTILMYUv--RRf7VSfpW5HjiyAyBMx5eFCpMk"

@@ -7,7 +7,10 @@ import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 
+from adapters.crm.monday_adapter import MondayCRMAdapter
+from adapters.storage.repositories.crm_outbox_repo import PostgresCRMOutboxRepository
 from core.config import Settings
+from core.services.crm_worker import CRMSyncWorker
 
 logger = structlog.get_logger("super_agent_platform.infra.scheduler")
 
@@ -46,6 +49,27 @@ def start_campaign_scheduler(app: FastAPI, settings: Settings) -> AsyncIOSchedul
                 duration_ms=payload.get("duration_ms"),
             )
 
+    async def _run_crm_sync_worker() -> None:
+        if not settings.monday_api_key.strip() or not settings.monday_board_id.strip():
+            logger.warning(
+                "crm_sync_worker_skipped_missing_config",
+                monday_api_key_set=bool(settings.monday_api_key.strip()),
+                monday_board_id_set=bool(settings.monday_board_id.strip()),
+            )
+            return
+
+        crm_worker = CRMSyncWorker(
+            crm_outbox_repository=PostgresCRMOutboxRepository(),
+            crm_provider=MondayCRMAdapter(
+                api_key=settings.monday_api_key,
+                board_id=settings.monday_board_id,
+            ),
+        )
+        try:
+            await crm_worker.process_batch(batch_size=10)
+        except Exception:
+            logger.exception("crm_sync_worker_run_failed")
+
     scheduler.add_job(
         _run_campaign_worker,
         "interval",
@@ -53,10 +77,22 @@ def start_campaign_scheduler(app: FastAPI, settings: Settings) -> AsyncIOSchedul
         id="campaign_worker_job",
         replace_existing=True,
     )
+    scheduler.add_job(
+        _run_crm_sync_worker,
+        "interval",
+        seconds=30,
+        id="crm_sync_worker_job",
+        replace_existing=True,
+    )
     scheduler.start()
     logger.info(
         "campaign_scheduler_started",
         interval_seconds=settings.campaign_scheduler_interval_seconds,
+    )
+    logger.info(
+        "crm_sync_worker_started",
+        interval_seconds=30,
+        job_id="crm_sync_worker_job",
     )
     return scheduler
 
