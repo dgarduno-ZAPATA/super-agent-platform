@@ -17,8 +17,8 @@ from core.brand.schema import (
     PoliciesConfig,
     ProductsConfig,
 )
-from core.fsm.schema import FSMConfig
 from core.config import get_settings
+from core.fsm.schema import FSMConfig
 
 
 class BrandValidationError(ValueError):

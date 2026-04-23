@@ -6,20 +6,20 @@ from adapters.branches.sheets_adapter import SheetsBranchAdapter
 from adapters.crm.monday_adapter import MondayCRMAdapter
 from adapters.inventory.sheets_adapter import SheetsInventoryAdapter
 from adapters.knowledge.pgvector_adapter import PgVectorKnowledgeAdapter
-from adapters.llm.vertex_embedding_adapter import VertexEmbeddingAdapter
 from adapters.llm.openai_adapter import OpenAILLMAdapter
 from adapters.llm.resilient_adapter import ResilientLLMAdapter
 from adapters.llm.vertex_adapter import VertexLLMAdapter
+from adapters.llm.vertex_embedding_adapter import VertexEmbeddingAdapter
 from adapters.llm.vertex_transcription_adapter import VertexTranscriptionAdapter
 from adapters.messaging.evolution.adapter import EvolutionMessagingAdapter
 from adapters.storage.db import get_session_factory
-from adapters.storage.repositories.crm_outbox_repo import PostgresCRMOutboxRepository
-from adapters.storage.repositories.audit_log_repo import PostgresAuditLogRepository
 from adapters.storage.repositories.admin_totp_repo import PostgresAdminTOTPRepository
+from adapters.storage.repositories.audit_log_repo import PostgresAuditLogRepository
+from adapters.storage.repositories.crm_outbox_repo import PostgresCRMOutboxRepository
 from adapters.storage.repositories.event_repo import PostgresConversationEventRepository
+from adapters.storage.repositories.knowledge_repo import PostgresKnowledgeRepository
 from adapters.storage.repositories.lead_repo import PostgresLeadProfileRepository
 from adapters.storage.repositories.login_attempt_repo import PostgresLoginAttemptRepository
-from adapters.storage.repositories.knowledge_repo import PostgresKnowledgeRepository
 from adapters.storage.repositories.outbound_queue_repo import PostgresOutboundQueueRepository
 from adapters.storage.repositories.session_repo import PostgresSessionRepository
 from adapters.storage.repositories.silenced_repo import PostgresSilencedUserRepository
@@ -42,19 +42,19 @@ from core.ports.repositories import (
     SilencedUserRepository,
 )
 from core.ports.transcription_provider import TranscriptionProvider
-from core.services.campaign_worker import CampaignWorker
 from core.services.audit_log_service import AuditLogService
+from core.services.campaign_worker import CampaignWorker
 from core.services.conversation_agent import ConversationAgent
 from core.services.dashboard_service import DashboardService
+from core.services.document_chunker import DocumentChunker
 from core.services.handoff_service import HandoffService
-from core.services.knowledge_ingestion_service import KnowledgeIngestionService
-from core.services.login_attempt_service import LoginAttemptService
 from core.services.image_analysis_service import ImageAnalysisService
 from core.services.inbound_handler import InboundMessageHandler
+from core.services.knowledge_ingestion_service import KnowledgeIngestionService
+from core.services.login_attempt_service import LoginAttemptService
 from core.services.orchestrator import OrchestratorAgent
 from core.services.replay_engine import ReplayEngine
 from core.services.skills import SkillRegistry
-from core.services.document_chunker import DocumentChunker
 
 
 def get_brand(request: Request) -> Brand:
@@ -180,9 +180,7 @@ def get_audit_log_repository() -> PostgresAuditLogRepository:
 
 
 def get_audit_log_service(
-    audit_log_repository: Annotated[
-        PostgresAuditLogRepository, Depends(get_audit_log_repository)
-    ],
+    audit_log_repository: Annotated[PostgresAuditLogRepository, Depends(get_audit_log_repository)],
 ) -> AuditLogService:
     return AuditLogService(repo=audit_log_repository)
 

@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 import base64
+import io
 from collections import defaultdict, deque
 from datetime import UTC, datetime, timedelta
-import io
-
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel
 import pyotp
 import qrcode
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 
 from adapters.storage.repositories.admin_totp_repo import PostgresAdminTOTPRepository
 from api.dependencies import (

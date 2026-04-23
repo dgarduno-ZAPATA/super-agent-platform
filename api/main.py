@@ -1,6 +1,6 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-import logging
 from typing import Annotated
 
 import sentry_sdk
@@ -10,8 +10,8 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
-from api.middleware.correlation import CorrelationMiddleware
 from api.dependencies import get_current_user
+from api.middleware.correlation import CorrelationMiddleware
 from api.routers.admin_panel import router as admin_router
 from api.routers.auth import router as auth_router
 from api.routers.campaigns import router as campaigns_router

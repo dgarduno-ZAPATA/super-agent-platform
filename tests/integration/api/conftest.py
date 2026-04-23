@@ -17,8 +17,8 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 
 from adapters.storage import db as db_module
-from api.routers import auth as auth_router
 from api.main import create_app
+from api.routers import auth as auth_router
 from core.config import get_settings
 
 DEFAULT_HOST_DATABASE_URL = (

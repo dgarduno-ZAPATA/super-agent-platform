@@ -50,7 +50,9 @@ class KnowledgeIngestionService:
             embedding = await self._embedding_adapter.embed(str(chunk["text"]))
             indexed_chunks.append({**chunk, "embedding": embedding})
 
-        created = await self._knowledge_repo.replace_chunks(source_id=source_id, chunks=indexed_chunks)
+        created = await self._knowledge_repo.replace_chunks(
+            source_id=source_id, chunks=indexed_chunks
+        )
         logger.info(
             "knowledge_source_ingested",
             source_label=source_label,
@@ -88,8 +90,12 @@ class KnowledgeIngestionService:
                     "embedding": embedding,
                 }
             )
-        replaced = await self._knowledge_repo.replace_chunks(source_id=source_id, chunks=reindexed_chunks)
-        logger.info("knowledge_source_reindexed", source_label=source_label, chunks_reindexed=replaced)
+        replaced = await self._knowledge_repo.replace_chunks(
+            source_id=source_id, chunks=reindexed_chunks
+        )
+        logger.info(
+            "knowledge_source_reindexed", source_label=source_label, chunks_reindexed=replaced
+        )
         return {"source_label": source_label, "chunks_reindexed": replaced}
 
     def _extract_chunks(

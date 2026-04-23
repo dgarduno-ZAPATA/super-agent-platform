@@ -65,7 +65,9 @@ class PostgresKnowledgeRepository:
         chunks: list[dict[str, object]],
     ) -> int:
         async with session_scope() as session:
-            await session.execute(delete(KnowledgeChunkModel).where(KnowledgeChunkModel.source_id == source_id))
+            await session.execute(
+                delete(KnowledgeChunkModel).where(KnowledgeChunkModel.source_id == source_id)
+            )
             for item in chunks:
                 content = str(item["text"])
                 chunk_index = int(item["chunk_index"])
@@ -90,9 +92,9 @@ class PostgresKnowledgeRepository:
             if source is None:
                 return 0
             count_result = await session.execute(
-                select(func.count()).select_from(KnowledgeChunkModel).where(
-                    KnowledgeChunkModel.source_id == source.id
-                )
+                select(func.count())
+                .select_from(KnowledgeChunkModel)
+                .where(KnowledgeChunkModel.source_id == source.id)
             )
             chunk_count = int(count_result.scalar_one())
             await session.delete(source)
@@ -106,7 +108,9 @@ class PostgresKnowledgeRepository:
                     func.count(KnowledgeChunkModel.id),
                     KnowledgeSourceModel.indexed_at,
                 )
-                .outerjoin(KnowledgeChunkModel, KnowledgeChunkModel.source_id == KnowledgeSourceModel.id)
+                .outerjoin(
+                    KnowledgeChunkModel, KnowledgeChunkModel.source_id == KnowledgeSourceModel.id
+                )
                 .group_by(KnowledgeSourceModel.id)
                 .order_by(KnowledgeSourceModel.indexed_at.desc().nullslast())
             )
@@ -155,7 +159,10 @@ class PostgresKnowledgeRepository:
                         similarity_expr,
                         KnowledgeChunkModel.chunk_index,
                     )
-                    .join(KnowledgeSourceModel, KnowledgeSourceModel.id == KnowledgeChunkModel.source_id)
+                    .join(
+                        KnowledgeSourceModel,
+                        KnowledgeSourceModel.id == KnowledgeChunkModel.source_id,
+                    )
                     .where(similarity_expr > min_similarity)
                     .order_by(distance_expr.asc())
                     .limit(limit)

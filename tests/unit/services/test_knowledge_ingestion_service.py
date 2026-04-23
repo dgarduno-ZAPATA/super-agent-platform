@@ -20,11 +20,15 @@ class FakeKnowledgeRepo:
         self.source_calls: list[tuple[str, str, str]] = []
         self.chunk_calls: list[tuple[object, list[dict[str, object]]]] = []
 
-    async def upsert_source(self, source_label: str, source_type: str, full_text: str):  # noqa: ANN201
+    async def upsert_source(
+        self, source_label: str, source_type: str, full_text: str
+    ):  # noqa: ANN201
         self.source_calls.append((source_label, source_type, full_text))
         return "source-uuid"
 
-    async def replace_chunks(self, source_id, chunks: list[dict[str, object]]) -> int:  # noqa: ANN001
+    async def replace_chunks(
+        self, source_id, chunks: list[dict[str, object]]
+    ) -> int:  # noqa: ANN001
         self.chunk_calls.append((source_id, chunks))
         return len(chunks)
 

@@ -119,9 +119,7 @@ class FallbackUsingFallbackConfig(StrictConfigModel):
 
 class FallbackMessagesConfig(StrictConfigModel):
     both_llms_failed: list[str] = Field(default_factory=list)
-    using_fallback: FallbackUsingFallbackConfig = Field(
-        default_factory=FallbackUsingFallbackConfig
-    )
+    using_fallback: FallbackUsingFallbackConfig = Field(default_factory=FallbackUsingFallbackConfig)
 
 
 class Brand(StrictConfigModel):

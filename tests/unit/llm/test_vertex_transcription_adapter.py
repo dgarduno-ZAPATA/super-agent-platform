@@ -32,7 +32,9 @@ class _FakeAudioClient:
 
 
 @pytest.mark.asyncio
-async def test_vertex_transcription_adapter_transcribes_audio(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_vertex_transcription_adapter_transcribes_audio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     fake_vertex = FakeVertexAdapter("Hola, busco camion")
     adapter = VertexTranscriptionAdapter(vertex_adapter=fake_vertex)  # type: ignore[arg-type]
 

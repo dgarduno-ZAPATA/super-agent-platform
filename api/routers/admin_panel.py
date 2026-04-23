@@ -195,9 +195,7 @@ async def generate_templates_csv(
 @router.get("/admin/audit-log")
 async def get_audit_log(
     current_user: Annotated[dict[str, object], Depends(get_current_user)],
-    audit_log_repo: Annotated[
-        PostgresAuditLogRepository, Depends(get_audit_log_repository)
-    ],
+    audit_log_repo: Annotated[PostgresAuditLogRepository, Depends(get_audit_log_repository)],
     limit: int = 50,
     offset: int = 0,
     action: str | None = None,

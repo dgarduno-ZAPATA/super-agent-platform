@@ -29,9 +29,7 @@ def test_invalid_brand_raises_clear_validation_error() -> None:
     assert "display_name" in str(exc_info.value)
 
 
-def test_brand_loader_respects_brand_path(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_brand_loader_respects_brand_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     brand_dir = tmp_path / "testbrand"
     brand_dir.mkdir()
     (brand_dir / "brand.yaml").write_text(

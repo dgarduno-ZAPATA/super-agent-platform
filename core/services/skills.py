@@ -122,7 +122,8 @@ class SkillRegistry:
         lines = ["Resultados de conocimiento relevantes:"]
         for index, chunk in enumerate(chunks, start=1):
             lines.append(
-                f"{index}. Fuente: {chunk.source_id} | similitud={chunk.score:.3f} | {chunk.content}"
+                f"{index}. Fuente: {chunk.source_id} | similitud={chunk.score:.3f} | "
+                f"{chunk.content}"
             )
         return "\n".join(lines)
 

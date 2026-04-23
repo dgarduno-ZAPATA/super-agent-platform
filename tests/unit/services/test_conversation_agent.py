@@ -403,7 +403,7 @@ async def test_llm_failure_sends_precanned_fallback_message() -> None:
     await agent.respond(_event("Hola"), session)
 
     assert len(messaging.sent_messages) == 1
-    assert (
-        messaging.sent_messages[0]["text"]
-        == "Disculpa, estoy teniendo problemas tecnicos en este momento. Me permites unos minutos y te escribo de vuelta?"
+    assert messaging.sent_messages[0]["text"] == (
+        "Disculpa, estoy teniendo problemas tecnicos en este momento."
+        " Me permites unos minutos y te escribo de vuelta?"
     )

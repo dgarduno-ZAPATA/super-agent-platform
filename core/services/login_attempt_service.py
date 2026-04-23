@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
 import math
+from datetime import UTC, datetime, timedelta
 
 from adapters.storage.repositories.login_attempt_repo import PostgresLoginAttemptRepository
 

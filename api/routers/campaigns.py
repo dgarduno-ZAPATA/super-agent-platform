@@ -5,8 +5,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, status
 
 from api.dependencies import get_audit_log_service, get_campaign_worker, require_internal_or_user
-from core.services.campaign_worker import CampaignWorker
 from core.services.audit_log_service import AuditLogService
+from core.services.campaign_worker import CampaignWorker
 
 router = APIRouter(prefix="/api/v1/campaigns", tags=["campaigns"])
 

@@ -37,13 +37,10 @@ class PostgresLoginAttemptRepository:
 
     async def oldest_failure_since(self, ip: str, since: datetime) -> datetime | None:
         async with session_scope() as session:
-            statement = (
-                select(func.min(LoginAttemptModel.attempted_at))
-                .where(
-                    LoginAttemptModel.ip_address == ip,
-                    LoginAttemptModel.success.is_(False),
-                    LoginAttemptModel.attempted_at >= since,
-                )
+            statement = select(func.min(LoginAttemptModel.attempted_at)).where(
+                LoginAttemptModel.ip_address == ip,
+                LoginAttemptModel.success.is_(False),
+                LoginAttemptModel.attempted_at >= since,
             )
             result = await session.execute(statement)
             value = result.scalar_one_or_none()

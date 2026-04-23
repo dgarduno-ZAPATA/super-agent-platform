@@ -14,7 +14,9 @@ async def test_resilient_llm_uses_fallback_when_primary_fails() -> None:
     primary = AsyncMock()
     primary.complete.side_effect = RuntimeError("Vertex down")
     fallback = AsyncMock()
-    fallback.complete.return_value = LLMResponse(content="Respuesta de fallback", finish_reason="stop")
+    fallback.complete.return_value = LLMResponse(
+        content="Respuesta de fallback", finish_reason="stop"
+    )
 
     adapter = ResilientLLMAdapter(primary=primary, fallback=fallback)
     result = await adapter.complete(

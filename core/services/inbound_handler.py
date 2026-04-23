@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
-import structlog
 import sentry_sdk
+import structlog
 
 from core.brand.schema import Brand
 from core.domain.branch import Branch
@@ -497,7 +497,9 @@ class InboundMessageHandler:
 
         return payload
 
-    async def _enrich_audio_event(self, inbound_event: InboundEvent) -> tuple[InboundEvent, str | None]:
+    async def _enrich_audio_event(
+        self, inbound_event: InboundEvent
+    ) -> tuple[InboundEvent, str | None]:
         media_url = inbound_event.media_url
         metadata = dict(inbound_event.metadata)
         if media_url is None:
@@ -543,7 +545,9 @@ class InboundMessageHandler:
             None,
         )
 
-    async def _enrich_image_event(self, inbound_event: InboundEvent) -> tuple[InboundEvent, str | None]:
+    async def _enrich_image_event(
+        self, inbound_event: InboundEvent
+    ) -> tuple[InboundEvent, str | None]:
         media_url = inbound_event.media_url
         metadata = dict(inbound_event.metadata)
         if media_url is None:
@@ -686,9 +690,7 @@ class InboundMessageHandler:
             limit=50,
         )
         dialogue_events = [
-            event
-            for event in events
-            if event.event_type in {"inbound_message", "outbound_message"}
+            event for event in events if event.event_type in {"inbound_message", "outbound_message"}
         ]
         return dialogue_events[-limit:]
 
