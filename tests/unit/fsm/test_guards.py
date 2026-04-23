@@ -13,3 +13,20 @@ def test_default_guards_behave_as_expected() -> None:
     assert guards["opt_out_detected"]({}) is False
     assert guards["has_name"]({"name": "Estefania"}) is True
     assert guards["has_name"]({}) is False
+
+
+def test_user_requested_document_guard() -> None:
+    guards = build_default_guard_registry()
+    guard = guards["user_requested_document"]
+
+    assert guard({"inbound_text": "mándame la ficha"}) is True
+    assert guard({"inbound_text": "quiero el PDF de la unidad"}) is True
+    assert guard({"inbound_text": "me puedes enviar el documento"}) is True
+    assert guard({"inbound_text": "necesito la ficha técnica"}) is True
+    assert guard({"inbound_text": "dame la corrida"}) is True
+    assert guard({"inbound_text": "cuales son las especificaciones"}) is True
+    assert guard({"inbound_text": "ok"}) is False
+    assert guard({"inbound_text": "Hola"}) is False
+    assert guard({"inbound_text": "tienes camiones?"}) is False
+    assert guard({"inbound_text": ""}) is False
+    assert guard({}) is False

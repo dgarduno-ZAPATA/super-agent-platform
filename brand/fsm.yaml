@@ -162,13 +162,14 @@ states:
     description: Navegacion de inventario y opciones para el lead.
     on_enter:
       - update_session
+      - update_crm_stage
     on_exit: []
     timeout_minutes: 120
     timeout_target: cooldown
     allowed_transitions:
       - target: document_delivery
         event: user_message
-        guard: always
+        guard: user_requested_document
         actions:
           - log_transition
       - target: objection_handling
@@ -202,6 +203,7 @@ states:
     description: Entrega de fichas tecnicas, corridas o documentos.
     on_enter:
       - update_session
+      - update_crm_stage
       - send_document
     on_exit: []
     timeout_minutes: 90
@@ -238,6 +240,7 @@ states:
     description: Manejo de objeciones de precio, marca o condicion.
     on_enter:
       - update_session
+      - update_crm_stage
     on_exit: []
     timeout_minutes: 120
     timeout_target: cooldown

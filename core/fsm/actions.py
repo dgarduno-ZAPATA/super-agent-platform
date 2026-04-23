@@ -296,6 +296,14 @@ def build_default_action_registry(
                 "send_document_skipped_no_url",
                 sku=product.sku if product is not None else "unknown",
             )
+            await deps.messaging_provider.send_text(
+                to=to_phone,
+                text=(
+                    "No tengo la ficha en formato digital en este momento. "
+                    "Puedo pedirle a un asesor que te la haga llegar, ¿te parece?"
+                ),
+                correlation_id=correlation_id,
+            )
             return
         try:
             await deps.messaging_provider.send_document(

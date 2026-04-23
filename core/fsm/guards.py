@@ -27,6 +27,30 @@ def has_name_guard(context: dict[str, object]) -> bool:
     return context.get("name") is not None
 
 
+def user_requested_document_guard(context: dict[str, object]) -> bool:
+    text = str(context.get("inbound_text") or "").lower()
+    keywords = [
+        "ficha",
+        "pdf",
+        "documento",
+        "técnica",
+        "tecnica",
+        "catálogo",
+        "catalogo",
+        "especificaciones",
+        "specs",
+        "mándame",
+        "mandame",
+        "envíame",
+        "enviame",
+        "enviar",
+        "corrida",
+        "información de la unidad",
+        "informacion de la unidad",
+    ]
+    return any(kw in text for kw in keywords)
+
+
 def build_default_guard_registry() -> GuardRegistry:
     return {
         "always": always_guard,
@@ -34,4 +58,5 @@ def build_default_guard_registry() -> GuardRegistry:
         "is_not_silenced": is_not_silenced_guard,
         "opt_out_detected": opt_out_detected_guard,
         "has_name": has_name_guard,
+        "user_requested_document": user_requested_document_guard,
     }
