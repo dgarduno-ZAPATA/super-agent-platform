@@ -22,7 +22,7 @@ def test_parse_csv_maps_columns_correctly() -> None:
         "VIN COMPLETO,VIN,Centro,Ubicación Física,Marca,Modelo,Año,Precio Sug. de Venta,"
         "Kilómetros,Motor,Transmisión,Color,Dormitorio,Paso,Promoción,Imagen Portada\n"
         "3AKJGLD59ESF12345,ESF12345,QUERETARO,PATIO A,Freightliner,Cascadia,2020,"
-        "\"$1,200,000.00\",\"450,000\",Detroit DD15,DT12,Blanco,60,3.58,SIN PROMO,"
+        '"$1,200,000.00","450,000",Detroit DD15,DT12,Blanco,60,3.58,SIN PROMO,'
         "https://img.example.com/cascadia.jpg\n"
     )
     adapter = SheetsInventoryAdapter(
@@ -36,7 +36,10 @@ def test_parse_csv_maps_columns_correctly() -> None:
 
     assert len(products) == 1
     assert products[0]["name"] == "Freightliner Cascadia 2020"
-    assert products[0]["description"] == "Motor: Detroit DD15 | Trans: DT12 | Km: 450000 | Color: Blanco"
+    assert (
+        products[0]["description"]
+        == "Motor: Detroit DD15 | Trans: DT12 | Km: 450000 | Color: Blanco"
+    )
     assert products[0]["price"] == "1200000.00"
     assert products[0]["availability"] == "disponible"
     assert products[0]["category"] == "Freightliner"
@@ -50,7 +53,7 @@ def test_search_products_filters_by_query() -> None:
         "VIN COMPLETO,VIN,Centro,Ubicación Física,Marca,Modelo,Año,Precio Sug. de Venta,"
         "Kilómetros,Motor,Transmisión,Color,Dormitorio,Paso,Promoción,Imagen Portada\n"
         "3AKJGLD59ESF12345,ESF12345,QUERETARO,PATIO A,Freightliner,Cascadia,2020,"
-        "\"$1,200,000.00\",\"450,000\",Detroit DD15,DT12,Blanco,60,3.58,SIN PROMO,"
+        '"$1,200,000.00","450,000",Detroit DD15,DT12,Blanco,60,3.58,SIN PROMO,'
         "https://img.example.com/cascadia.jpg\n"
         "3ALACWFC4JDLM6789,,LEON,PATIO B,International,LT,2019,980000,320000,Cummins X15,"
         "Eaton Fuller,Rojo,52,3.70,PROMO,https://img.example.com/lt.jpg\n"
@@ -96,7 +99,7 @@ def test_cache_avoids_second_http_request() -> None:
             "VIN COMPLETO,VIN,Centro,Ubicación Física,Marca,Modelo,Año,Precio Sug. de Venta,"
             "Kilómetros,Motor,Transmisión,Color,Dormitorio,Paso,Promoción,Imagen Portada\n"
             "3AKJGLD59ESF12345,ESF12345,QUERETARO,PATIO A,Freightliner,Cascadia,2020,"
-            "\"$1,200,000.00\",\"450,000\",Detroit DD15,DT12,Blanco,60,3.58,SIN PROMO,"
+            '"$1,200,000.00","450,000",Detroit DD15,DT12,Blanco,60,3.58,SIN PROMO,'
             "https://img.example.com/cascadia.jpg\n"
         )
 
