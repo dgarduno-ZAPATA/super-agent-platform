@@ -175,7 +175,7 @@ async def test_send_document_returns_controlled_error_when_url_not_available() -
         context=SkillExecutionContext(phone="5214421234567", correlation_id="corr-123"),
     )
 
-    assert response == "Documento no disponible en este momento."
+    assert response == "La ficha técnica de esa unidad no está disponible en este momento."
     assert len(messaging.documents) == 0
 
 

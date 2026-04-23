@@ -155,7 +155,7 @@ class SkillRegistry:
     async def send_document(self, document_id: str, context: SkillExecutionContext) -> str:
         document_url = self._resolve_document_url(document_id)
         if document_url is None:
-            return "Documento no disponible en este momento."
+            return "La ficha técnica de esa unidad no está disponible en este momento."
         filename = Path(document_id).name if Path(document_id).name else "documento.pdf"
         await self._messaging_provider.send_document(
             to=context.phone,
