@@ -69,7 +69,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --image "${IMAGE_URI}" \
   --port "8000" \
   --add-cloudsql-instances "${CONNECTION_NAME}" \
-  --set-secrets "DATABASE_URL=${SECRET_DATABASE_URL}:latest,EVOLUTION_BASE_URL=${SECRET_EVOLUTION_BASE_URL}:latest,EVOLUTION_API_KEY=${SECRET_EVOLUTION_API_KEY}:latest,EVOLUTION_INSTANCE_NAME=${SECRET_EVOLUTION_INSTANCE_NAME}:latest" \
+  --set-secrets "DATABASE_URL=${SECRET_DATABASE_URL}:latest,EVOLUTION_BASE_URL=${SECRET_EVOLUTION_BASE_URL}:latest,EVOLUTION_API_KEY=${SECRET_EVOLUTION_API_KEY}:latest,EVOLUTION_INSTANCE_NAME=${SECRET_EVOLUTION_INSTANCE_NAME}:latest,MONDAY_API_KEY=MONDAY_API_KEY:latest,MONDAY_BOARD_ID=MONDAY_BOARD_ID:latest" \
   --min-instances "0" \
   --max-instances "2" \
   --memory "512Mi" \
@@ -88,4 +88,3 @@ echo ""
 echo "Cloud Run URL: ${SERVICE_URL}"
 echo "Deployed image: ${IMAGE_URI}"
 echo "Cloud SQL connection: ${CONNECTION_NAME}"
-
