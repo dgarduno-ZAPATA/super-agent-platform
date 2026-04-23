@@ -217,6 +217,18 @@ class InboundMessageHandler:
             action_registry=self._action_registry,
         )
         transition_result = await fsm_engine.process_event(classification.fsm_event, fsm_context)
+        response_text = (
+            str(classification.metadata.get("handoff_response_text"))
+            if isinstance(classification.metadata.get("handoff_response_text"), str)
+            else None
+        )
+        response_chars = len(response_text) if response_text is not None else None
+        # TODO: plumb concrete tool-call names from the LLM turn into this handler log.
+        tool_calls_made = classification.metadata.get("tool_calls")
+        if not isinstance(tool_calls_made, list):
+            tool_calls_made = []
+        else:
+            tool_calls_made = [str(item) for item in tool_calls_made]
         logger.info(
             "fsm_event_processed",
             session_id=str(session.id),
@@ -227,6 +239,8 @@ class InboundMessageHandler:
             new_state=transition_result.new_state,
             transition_taken=transition_result.transition_taken,
             no_transition_matched=transition_result.no_transition_matched,
+            tool_calls_made=tool_calls_made,
+            response_chars=response_chars,
         )
 
         updated_session = await self._update_session_after_response(

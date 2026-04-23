@@ -108,6 +108,16 @@ class EvolutionMessagingAdapter(MessagingProvider):
 
         body = response.json()
         message_id = str(body.get("key", {}).get("id", correlation_id))
+        message_type = (
+            str(request_payload.get("mediatype", "")).strip().lower() or "text"
+        )
+        recipient_phone = str(request_payload.get("number", ""))
+        logger.info(
+            "evolution_message_accepted",
+            to=recipient_phone,
+            provider_message_id=message_id,
+            message_type=message_type,
+        )
 
         return MessageDeliveryReceipt(
             message_id=message_id,

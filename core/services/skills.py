@@ -3,11 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import structlog
+
 from core.brand.schema import Brand
 from core.domain.llm import ToolCall, ToolResult, ToolSchema
 from core.ports.inventory_provider import InventoryProvider
 from core.ports.knowledge_provider import KnowledgeProvider
 from core.ports.messaging_provider import MessagingProvider
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,10 +132,34 @@ class SkillRegistry:
         return "\n".join(lines)
 
     def query_inventory(self, product_name: str | None = None) -> str:
+        query_term = (product_name or "").strip()
+        filters: dict[str, object] = {}
+        logger.info(
+            "inventory_query_start",
+            query=query_term,
+            filters=filters if filters else None,
+        )
         matches = (
             self._inventory_provider.search_products(product_name)
             if product_name and product_name.strip()
             else self._inventory_provider.get_products()
+        )
+        fallback_used = bool(matches) and all(
+            not isinstance(product.get("metadata"), dict) for product in matches
+        )
+        if fallback_used:
+            logger.warning(
+                "inventory_query_fallback",
+                query=query_term,
+                reason="sheet_unavailable",
+                fallback_count=len(matches),
+            )
+        logger.info(
+            "inventory_query_result",
+            query=query_term,
+            total_results=len(matches),
+            skus=[str(product.get("sku", "")) for product in matches[:5]],
+            used_fallback=False,
         )
         if not matches:
             if product_name and product_name.strip():
