@@ -19,8 +19,11 @@ def _fallback_products() -> list[ProductConfig]:
 
 def test_parse_csv_maps_columns_correctly() -> None:
     csv_text = (
-        "nombre,descripcion,precio,disponible,categoria,sku\n"
-        "Cascadia 2020,Tracto seminuevo,1200000,si,tractocamion,FL-CASCADIA-2020\n"
+        "VIN COMPLETO,VIN,Centro,Ubicación Física,Marca,Modelo,Año,Precio Sug. de Venta,"
+        "Kilómetros,Motor,Transmisión,Color,Dormitorio,Paso,Promoción,Imagen Portada\n"
+        "3AKJGLD59ESF12345,ESF12345,QUERETARO,PATIO A,Freightliner,Cascadia,2020,"
+        "\"$1,200,000.00\",\"450,000\",Detroit DD15,DT12,Blanco,60,3.58,SIN PROMO,"
+        "https://img.example.com/cascadia.jpg\n"
     )
     adapter = SheetsInventoryAdapter(
         csv_url="https://example.com/inventory.csv",
@@ -32,19 +35,25 @@ def test_parse_csv_maps_columns_correctly() -> None:
     products = adapter.get_products()
 
     assert len(products) == 1
-    assert products[0]["name"] == "Cascadia 2020"
-    assert products[0]["description"] == "Tracto seminuevo"
-    assert products[0]["price"] == "1200000"
-    assert products[0]["availability"] == "si"
-    assert products[0]["category"] == "tractocamion"
-    assert products[0]["sku"] == "FL-CASCADIA-2020"
+    assert products[0]["name"] == "Freightliner Cascadia 2020"
+    assert products[0]["description"] == "Motor: Detroit DD15 | Trans: DT12 | Km: 450000 | Color: Blanco"
+    assert products[0]["price"] == "1200000.00"
+    assert products[0]["availability"] == "disponible"
+    assert products[0]["category"] == "Freightliner"
+    assert products[0]["sku"] == "ESF12345"
+    assert products[0]["metadata"]["km"] == 450000
+    assert products[0]["metadata"]["engine"] == "Detroit DD15"
 
 
 def test_search_products_filters_by_query() -> None:
     csv_text = (
-        "nombre,descripcion,precio,disponible,categoria,sku\n"
-        "Cascadia 2020,Tracto seminuevo,1200000,si,tractocamion,FL-CASCADIA-2020\n"
-        "M2 Caja Seca,Camion de reparto,750000,si,reparto,M2-BOX-2018\n"
+        "VIN COMPLETO,VIN,Centro,Ubicación Física,Marca,Modelo,Año,Precio Sug. de Venta,"
+        "Kilómetros,Motor,Transmisión,Color,Dormitorio,Paso,Promoción,Imagen Portada\n"
+        "3AKJGLD59ESF12345,ESF12345,QUERETARO,PATIO A,Freightliner,Cascadia,2020,"
+        "\"$1,200,000.00\",\"450,000\",Detroit DD15,DT12,Blanco,60,3.58,SIN PROMO,"
+        "https://img.example.com/cascadia.jpg\n"
+        "3ALACWFC4JDLM6789,,LEON,PATIO B,International,LT,2019,980000,320000,Cummins X15,"
+        "Eaton Fuller,Rojo,52,3.70,PROMO,https://img.example.com/lt.jpg\n"
     )
     adapter = SheetsInventoryAdapter(
         csv_url="https://example.com/inventory.csv",
@@ -56,7 +65,10 @@ def test_search_products_filters_by_query() -> None:
     matches = adapter.search_products("cascadia")
 
     assert len(matches) == 1
-    assert matches[0]["sku"] == "FL-CASCADIA-2020"
+    assert matches[0]["sku"] == "ESF12345"
+
+    fallback_sku = adapter.search_products("international")[0]["sku"]
+    assert fallback_sku == "3ALACWFC4JDLM6789"
 
 
 def test_fallback_to_yaml_when_no_url() -> None:
@@ -81,8 +93,11 @@ def test_cache_avoids_second_http_request() -> None:
         nonlocal call_count
         call_count += 1
         return (
-            "nombre,descripcion,precio,disponible,categoria,sku\n"
-            "Cascadia 2020,Tracto seminuevo,1200000,si,tractocamion,FL-CASCADIA-2020\n"
+            "VIN COMPLETO,VIN,Centro,Ubicación Física,Marca,Modelo,Año,Precio Sug. de Venta,"
+            "Kilómetros,Motor,Transmisión,Color,Dormitorio,Paso,Promoción,Imagen Portada\n"
+            "3AKJGLD59ESF12345,ESF12345,QUERETARO,PATIO A,Freightliner,Cascadia,2020,"
+            "\"$1,200,000.00\",\"450,000\",Detroit DD15,DT12,Blanco,60,3.58,SIN PROMO,"
+            "https://img.example.com/cascadia.jpg\n"
         )
 
     current = {"value": now}

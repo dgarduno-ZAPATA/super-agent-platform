@@ -65,3 +65,5 @@ temp/
 # Type checker and notebooks
 .pyre/
 .ipynb_checkpoints/
+
+.claude/

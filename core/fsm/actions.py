@@ -171,7 +171,7 @@ def _resolve_product(
 def _resolve_document_target(
     context: dict[str, object],
     dependencies: FSMActionDependencies,
-) -> tuple[str, str]:
+) -> tuple[str | None, str | None]:
     explicit_url = _extract_nested_string(context, ["document_url", "ficha_url", "brochure_url"])
     if explicit_url is not None:
         filename = _coerce_str(context.get("document_filename")) or Path(explicit_url).name
@@ -183,9 +183,10 @@ def _resolve_document_target(
             candidate = _coerce_str(product.metadata.get(key))
             if candidate is not None:
                 return candidate, f"{product.sku}.pdf"
-        return f"https://docs.example.com/{product.sku}.pdf", f"{product.sku}.pdf"
+        # Sin URL real configurada: no mandar documento
+        return None, None
 
-    return "https://docs.example.com/catalogo.pdf", "catalogo.pdf"
+    return None, None
 
 
 def build_default_action_registry(
@@ -288,7 +289,14 @@ def build_default_action_registry(
             return
 
         correlation_id = _coerce_str(context.get("correlation_id")) or "fsm-send-document"
+        product = _resolve_product(context, deps)
         document_url, filename = _resolve_document_target(context, deps)
+        if document_url is None or filename is None:
+            logger.warning(
+                "send_document_skipped_no_url",
+                sku=product.sku if product is not None else "unknown",
+            )
+            return
         try:
             await deps.messaging_provider.send_document(
                 to=to_phone,

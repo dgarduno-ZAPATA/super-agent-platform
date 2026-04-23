@@ -154,6 +154,8 @@ class SkillRegistry:
 
     async def send_document(self, document_id: str, context: SkillExecutionContext) -> str:
         document_url = self._resolve_document_url(document_id)
+        if document_url is None:
+            return "Documento no disponible en este momento."
         filename = Path(document_id).name if Path(document_id).name else "documento.pdf"
         await self._messaging_provider.send_document(
             to=context.phone,
@@ -181,8 +183,8 @@ class SkillRegistry:
         return normalized
 
     @staticmethod
-    def _resolve_document_url(document_id: str) -> str:
+    def _resolve_document_url(document_id: str) -> str | None:
         normalized = document_id.strip()
         if normalized.startswith("http://") or normalized.startswith("https://"):
             return normalized
-        return f"https://docs.example.com/{normalized}"
+        return None

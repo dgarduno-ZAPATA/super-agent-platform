@@ -12,12 +12,26 @@ class StrictConfigModel(BaseModel):
 
 
 class InventoryColumnsConfig(StrictConfigModel):
-    name: str = "nombre"
+    # Compat fields retained for backwards compatibility with older fixtures/configs.
     description: str = "descripcion"
-    price: str = "precio"
     availability: str = "disponible"
     category: str = "categoria"
-    sku: str = "sku"
+    sku: str = "VIN"
+    sku_full: str = "VIN COMPLETO"
+    name: str = "Modelo"
+    brand: str = "Marca"
+    year: str = "Año"
+    price: str = "Precio Sug. de Venta"
+    km: str = "Kilómetros"
+    engine: str = "Motor"
+    transmission: str = "Transmisión"
+    color: str = "Color"
+    location: str = "Centro"
+    physical_location: str = "Ubicación Física"
+    sleeper: str = "Dormitorio"
+    paso: str = "Paso"
+    promotion: str = "Promoción"
+    image_url: str = "Imagen Portada"
 
 
 class BrandConfig(StrictConfigModel):

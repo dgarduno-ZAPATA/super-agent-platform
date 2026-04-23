@@ -9,9 +9,19 @@ accent_color: "#2e86c1"
 support_phone: ""
 admin_title: "Panel de Raúl"
 inventory_columns:
-  name: nombre
-  description: descripcion
-  price: precio
-  availability: disponible
-  category: categoria
-  sku: sku
+  sku: "VIN"
+  sku_full: "VIN COMPLETO"
+  name: "Modelo"
+  brand: "Marca"
+  year: "Año"
+  price: "Precio Sug. de Venta"
+  km: "Kilómetros"
+  engine: "Motor"
+  transmission: "Transmisión"
+  color: "Color"
+  location: "Centro"
+  physical_location: "Ubicación Física"
+  sleeper: "Dormitorio"
+  paso: "Paso"
+  promotion: "Promoción"
+  image_url: "Imagen Portada"

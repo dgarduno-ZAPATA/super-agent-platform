@@ -161,7 +161,7 @@ def test_query_inventory_formats_product_data() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_document_calls_messaging_provider() -> None:
+async def test_send_document_returns_controlled_error_when_url_not_available() -> None:
     messaging = FakeMessagingProvider()
     registry = SkillRegistry(
         knowledge_provider=FakeKnowledgeProvider(),
@@ -173,6 +173,25 @@ async def test_send_document_calls_messaging_provider() -> None:
     response = await registry.send_document(
         document_id="ficha-cascadia.pdf",
         context=SkillExecutionContext(phone="5214421234567", correlation_id="corr-123"),
+    )
+
+    assert response == "Documento no disponible en este momento."
+    assert len(messaging.documents) == 0
+
+
+@pytest.mark.asyncio
+async def test_send_document_calls_messaging_provider_with_full_url() -> None:
+    messaging = FakeMessagingProvider()
+    registry = SkillRegistry(
+        knowledge_provider=FakeKnowledgeProvider(),
+        inventory_provider=FakeInventoryProvider(),
+        messaging_provider=messaging,
+        brand=load_brand(Path("brand")),
+    )
+
+    response = await registry.send_document(
+        document_id="https://cdn.example.com/fichas/ficha-cascadia.pdf",
+        context=SkillExecutionContext(phone="5214421234567", correlation_id="corr-456"),
     )
 
     assert response == "Documento enviado con exito"

@@ -171,7 +171,6 @@ states:
         guard: always
         actions:
           - log_transition
-          - send_document
       - target: objection_handling
         event: user_message
         guard: always

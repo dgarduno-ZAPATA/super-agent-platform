@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from io import StringIO
@@ -100,32 +101,101 @@ class SheetsInventoryAdapter(InventoryProvider):
         return products
 
     def _map_row(self, row: dict[str, str]) -> dict[str, object] | None:
-        name = str(row.get(self._inventory_columns.name, "")).strip()
+        sku = self._resolve_sku(row)
+        if not sku:
+            return None
+        brand = self._safe_get(row, self._inventory_columns.brand)
+        model = self._safe_get(row, self._inventory_columns.name)
+        year = self._safe_get(row, self._inventory_columns.year)
+        name = " ".join(part for part in (brand, model, year) if part).strip()
         if not name:
             return None
 
-        description = str(row.get(self._inventory_columns.description, "")).strip()
-        price = str(row.get(self._inventory_columns.price, "")).strip() or "No disponible"
-        availability = (
-            str(row.get(self._inventory_columns.availability, "")).strip() or "No disponible"
+        engine = self._safe_get(row, self._inventory_columns.engine)
+        transmission = self._safe_get(row, self._inventory_columns.transmission)
+        color = self._safe_get(row, self._inventory_columns.color)
+        km = self._normalize_km_value(self._safe_get(row, self._inventory_columns.km))
+        km_value = str(km) if km is not None else "No disponible"
+        description = (
+            f"Motor: {engine or 'No disponible'} | "
+            f"Trans: {transmission or 'No disponible'} | "
+            f"Km: {km_value} | "
+            f"Color: {color or 'No disponible'}"
         )
-        category = str(row.get(self._inventory_columns.category, "")).strip() or "No disponible"
-        sku = str(row.get(self._inventory_columns.sku, "")).strip()
-        if not sku:
-            sku = f"SHEET-{name.upper().replace(' ', '-')}"
+        price = self._normalize_price_value(self._safe_get(row, self._inventory_columns.price))
+        category = brand or "No disponible"
+        metadata = {
+            "km": km,
+            "engine": engine or "",
+            "transmission": transmission or "",
+            "color": color or "",
+            "year": year or "",
+            "location": self._safe_get(row, self._inventory_columns.location),
+            "physical_location": self._safe_get(row, self._inventory_columns.physical_location),
+            "sleeper": self._safe_get(row, self._inventory_columns.sleeper),
+            "paso": self._safe_get(row, self._inventory_columns.paso),
+            "promotion": self._safe_get(row, self._inventory_columns.promotion),
+            "image_url": self._safe_get(row, self._inventory_columns.image_url),
+            "sku_full": self._safe_get(row, self._inventory_columns.sku_full),
+        }
 
         return {
             "sku": sku,
             "name": name,
             "description": description,
             "price": price,
-            "availability": availability,
+            "availability": "disponible",
             "category": category,
+            "metadata": metadata,
         }
+
+    def _resolve_sku(self, row: dict[str, str]) -> str:
+        sku = self._safe_get(row, self._inventory_columns.sku)
+        if sku:
+            return sku
+
+        sku_full = self._safe_get(row, self._inventory_columns.sku_full)
+        if sku_full:
+            return sku_full[:17]
+        return ""
+
+    @staticmethod
+    def _safe_get(row: dict[str, str], column: str) -> str:
+        return str(row.get(column, "")).strip()
+
+    @staticmethod
+    def _normalize_price_value(raw_price: str) -> str:
+        if not raw_price:
+            return "No disponible"
+
+        normalized = re.sub(r"[^0-9.]", "", raw_price)
+        if normalized.count(".") > 1:
+            parts = normalized.split(".")
+            normalized = "".join(parts[:-1]) + "." + parts[-1]
+
+        if not normalized or normalized == ".":
+            return "No disponible"
+
+        try:
+            return f"{float(normalized):.2f}"
+        except ValueError:
+            return "No disponible"
+
+    @staticmethod
+    def _normalize_km_value(raw_km: str) -> int | None:
+        if not raw_km:
+            return None
+        digits = re.sub(r"[^0-9]", "", raw_km)
+        if not digits:
+            return None
+        try:
+            return int(digits)
+        except ValueError:
+            return None
 
     @staticmethod
     def _default_http_get(url: str) -> str:
-        response = httpx.get(url, timeout=10.0)
+        response = httpx.get(url, timeout=10.0, follow_redirects=True)
         response.raise_for_status()
         return response.text
 
