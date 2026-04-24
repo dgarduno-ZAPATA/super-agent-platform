@@ -3,8 +3,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
-from sqlalchemy import Text, cast, func, select
+from sqlalchemy import Text, cast, func, select, text
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import IntegrityError, ProgrammingError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.storage.db import session_scope
 from adapters.storage.models import CRMDLQModel, CRMOutboxModel
@@ -42,6 +44,9 @@ class PostgresCRMOutboxRepository(CRMOutboxRepository):
         item_id = uuid4()
         aggregate_uuid = self._parse_aggregate_id(aggregate_id)
         aggregate_value = str(aggregate_uuid)
+        created_at = datetime.now(UTC)
+        lock_key = f"{aggregate_value}:{operation}"
+        pending_status = "pending"
 
         async with session_scope() as session:
             statement = (
@@ -51,30 +56,67 @@ class PostgresCRMOutboxRepository(CRMOutboxRepository):
                     aggregate_id=aggregate_value,
                     operation=operation,
                     payload=payload,
-                    status="pending",
+                    status=pending_status,
                     attempts=0,
                     next_retry_at=None,
                     last_error=None,
-                    created_at=datetime.now(UTC),
-                    updated_at=datetime.now(UTC),
+                    created_at=created_at,
+                    updated_at=created_at,
                 )
                 .on_conflict_do_nothing(
                     index_elements=[CRMOutboxModel.aggregate_id, CRMOutboxModel.operation],
-                    index_where=(CRMOutboxModel.status == "pending"),
+                    # Keep this literal so Postgres can match the partial
+                    # unique index predicate exactly.
+                    index_where=text("status = 'pending'"),
                 )
                 .returning(CRMOutboxModel.id)
             )
-            result = await session.execute(statement)
-            created_id = result.scalar_one_or_none()
-            if created_id is None:
-                existing_result = await session.execute(
-                    select(CRMOutboxModel.id).where(
-                        cast(CRMOutboxModel.aggregate_id, Text) == aggregate_value,
-                        CRMOutboxModel.operation == operation,
-                        CRMOutboxModel.status == "pending",
-                    )
+            try:
+                result = await session.execute(statement)
+                created_id = result.scalar_one_or_none()
+            except ProgrammingError as exc:
+                if not self._is_missing_on_conflict_constraint(exc):
+                    raise
+                await self._acquire_outbox_lock(session, lock_key)
+                created_id = await self._get_existing_pending_id(
+                    session, aggregate_value, operation
                 )
-                created_id = existing_result.scalar_one()
+                if created_id is None:
+                    fallback_statement = (
+                        insert(CRMOutboxModel)
+                        .values(
+                            id=item_id,
+                            aggregate_id=aggregate_value,
+                            operation=operation,
+                            payload=payload,
+                            status=pending_status,
+                            attempts=0,
+                            next_retry_at=None,
+                            last_error=None,
+                            created_at=created_at,
+                            updated_at=created_at,
+                        )
+                        .returning(CRMOutboxModel.id)
+                    )
+                    try:
+                        fallback_result = await session.execute(fallback_statement)
+                        created_id = fallback_result.scalar_one()
+                    except IntegrityError:
+                        created_id = await self._get_existing_pending_id(
+                            session, aggregate_value, operation
+                        )
+                        if created_id is None:
+                            raise
+
+            if created_id is None:
+                existing_id = await self._get_existing_pending_id(
+                    session, aggregate_value, operation
+                )
+                if existing_id is None:
+                    raise RuntimeError(
+                        "crm_outbox_enqueue_failed: pending operation not created nor found"
+                    )
+                created_id = existing_id
 
         return created_id
 
@@ -178,3 +220,29 @@ class PostgresCRMOutboxRepository(CRMOutboxRepository):
             return UUID(aggregate_id)
         except ValueError:
             return uuid5(NAMESPACE_URL, aggregate_id)
+
+    @staticmethod
+    def _is_missing_on_conflict_constraint(exc: ProgrammingError) -> bool:
+        return "no unique or exclusion constraint matching the ON CONFLICT specification" in str(
+            exc
+        )
+
+    @staticmethod
+    async def _acquire_outbox_lock(session: AsyncSession, lock_key: str) -> None:
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+            {"lock_key": lock_key},
+        )
+
+    @staticmethod
+    async def _get_existing_pending_id(
+        session: AsyncSession, aggregate_value: str, operation: str
+    ) -> UUID | None:
+        existing_result = await session.execute(
+            select(CRMOutboxModel.id).where(
+                cast(CRMOutboxModel.aggregate_id, Text) == aggregate_value,
+                CRMOutboxModel.operation == operation,
+                CRMOutboxModel.status == "pending",
+            )
+        )
+        return existing_result.scalar_one_or_none()
