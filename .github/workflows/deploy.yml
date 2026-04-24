@@ -39,4 +39,6 @@ jobs:
             --region="${{ env.REGION }}" \
             --project="${{ env.PROJECT_ID }}" \
             --platform=managed \
+            --update-env-vars="GCP_PROJECT_ID=${{ env.PROJECT_ID }}" \
+            --set-secrets="DATABASE_URL=DATABASE_URL:latest,EVOLUTION_BASE_URL=EVOLUTION_BASE_URL:latest,EVOLUTION_API_KEY=EVOLUTION_API_KEY:latest,EVOLUTION_INSTANCE_NAME=EVOLUTION_INSTANCE_NAME:latest,MONDAY_API_KEY=MONDAY_API_KEY:latest,MONDAY_BOARD_ID=MONDAY_BOARD_ID:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest,ADMIN_PASSWORD=ADMIN_PASSWORD:latest,INTERNAL_TOKEN=INTERNAL_TOKEN:latest" \
             --quiet
