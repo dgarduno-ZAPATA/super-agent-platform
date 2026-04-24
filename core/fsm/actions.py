@@ -295,6 +295,7 @@ def build_default_action_registry(
             logger.warning(
                 "send_document_skipped_no_url",
                 sku=product.sku if product is not None else "unknown",
+                to=to_phone,
             )
             return
         try:

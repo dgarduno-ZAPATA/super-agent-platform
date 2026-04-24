@@ -70,8 +70,8 @@ class PostgresKnowledgeRepository:
             )
             for item in chunks:
                 content = str(item["text"])
-                chunk_index = int(item["chunk_index"])
-                embedding = list(item["embedding"])  # type: ignore[arg-type]
+                chunk_index = int(item["chunk_index"])  # type: ignore[call-overload]
+                embedding = list(item["embedding"])  # type: ignore[call-overload]
                 session.add(
                     KnowledgeChunkModel(
                         id=uuid4(),

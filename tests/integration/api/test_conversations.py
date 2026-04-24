@@ -53,13 +53,11 @@ def _session_state(lead_id: UUID) -> str | None:
     async def _query() -> str | None:
         async with session_scope() as session:
             result = await session.execute(
-                text(
-                    """
+                text("""
                     SELECT current_state
                     FROM sessions
                     WHERE lead_id = :lead_id
-                    """
-                ),
+                    """),
                 {"lead_id": lead_id},
             )
             value = result.scalar_one_or_none()
@@ -72,14 +70,12 @@ def _system_event_count(lead_id: UUID, event_type: str) -> int:
     async def _query() -> int:
         async with session_scope() as session:
             result = await session.execute(
-                text(
-                    """
+                text("""
                     SELECT COUNT(*)
                     FROM conversation_events
                     WHERE lead_id = :lead_id
                     AND event_type = :event_type
-                    """
-                ),
+                    """),
                 {"lead_id": lead_id, "event_type": event_type},
             )
             return int(result.scalar_one())
