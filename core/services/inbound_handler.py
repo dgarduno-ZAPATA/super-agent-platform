@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -145,17 +146,18 @@ class InboundMessageHandler:
             )
 
         lead_profile, _ = await self._get_or_create_lead_profile(enriched_inbound_event)
-        await self._crm_outbox_repository.enqueue_operation(
-            aggregate_id=str(lead_profile.id),
-            operation="upsert_lead",
-            payload={
-                "phone": lead_profile.phone,
-                "name": lead_profile.name,
-                "source": lead_profile.source,
-            },
-        )
         session = await self._get_or_create_session(
             lead_profile.id, enriched_inbound_event.received_at
+        )
+        lead_profile = await self._update_lead_profile_from_inbound(
+            lead_profile=lead_profile,
+            inbound_event=enriched_inbound_event,
+        )
+        await self._enqueue_lead_upsert(
+            lead_profile=lead_profile,
+            session=session,
+            inbound_event=enriched_inbound_event,
+            context_source="inbound_pre_fsm",
         )
         self._set_sentry_tags(
             lead_id=lead_profile.id,
@@ -345,6 +347,147 @@ class InboundMessageHandler:
             )
         )
         return created, True
+
+    async def _update_lead_profile_from_inbound(
+        self,
+        lead_profile: LeadProfile,
+        inbound_event: InboundEvent,
+    ) -> LeadProfile:
+        hints = self._extract_lead_hints(inbound_event.text)
+        push_name = self._extract_push_name(inbound_event)
+        attributes = dict(lead_profile.attributes)
+        changed = False
+        for key in ("city", "budget", "vehicle_interest"):
+            value = hints.get(key)
+            if value is None:
+                continue
+            if attributes.get(key) != value:
+                attributes[key] = value
+                changed = True
+
+        name = lead_profile.name
+        hinted_name = hints.get("name")
+        if isinstance(hinted_name, str) and hinted_name:
+            if name != hinted_name:
+                name = hinted_name
+                changed = True
+        elif not name and push_name:
+            name = push_name
+            changed = True
+
+        if not changed:
+            return lead_profile
+
+        now = datetime.now(UTC)
+        updated = lead_profile.model_copy(
+            update={
+                "name": name,
+                "attributes": attributes,
+                "updated_at": now,
+            }
+        )
+        return await self._lead_profile_repository.upsert_by_phone(updated)
+
+    async def _enqueue_lead_upsert(
+        self,
+        lead_profile: LeadProfile,
+        session: Session,
+        inbound_event: InboundEvent,
+        context_source: str,
+    ) -> None:
+        payload = self._build_crm_upsert_payload(
+            lead_profile=lead_profile,
+            session=session,
+            inbound_event=inbound_event,
+        )
+        await self._crm_outbox_repository.enqueue_operation(
+            aggregate_id=str(lead_profile.id),
+            operation="upsert_lead",
+            payload=payload,
+        )
+        logger.info(
+            "crm_upsert_lead_enqueued",
+            lead_id=str(lead_profile.id),
+            fsm_state=session.current_state,
+            context_source=context_source,
+            has_vehicle_interest=bool(payload.get("vehicle_interest")),
+            has_budget=bool(payload.get("budget")),
+            has_city=bool(payload.get("city")),
+        )
+
+    @staticmethod
+    def _build_crm_upsert_payload(
+        lead_profile: LeadProfile,
+        session: Session,
+        inbound_event: InboundEvent,
+    ) -> dict[str, object]:
+        attributes = dict(lead_profile.attributes)
+        payload: dict[str, object] = {
+            "phone": lead_profile.phone,
+            "name": lead_profile.name,
+            "source": lead_profile.source,
+            "fsm_state": session.current_state,
+            "last_message_text": inbound_event.text,
+        }
+        for key in ("city", "budget", "vehicle_interest"):
+            value = attributes.get(key)
+            if value is not None:
+                payload[key] = value
+        return payload
+
+    @staticmethod
+    def _extract_lead_hints(inbound_text: str | None) -> dict[str, object]:
+        text = (inbound_text or "").strip()
+        if not text:
+            return {}
+
+        hints: dict[str, object] = {}
+        normalized_text = text.lower()
+
+        budget_match = re.search(
+            r"(?:presupuesto|\\$|mxn|pesos?)\\s*(?::|de)?\\s*([0-9][0-9.,]{2,})",
+            normalized_text,
+        )
+        if budget_match:
+            digits = re.sub(r"[^0-9]", "", budget_match.group(1))
+            if digits:
+                hints["budget"] = int(digits)
+
+        vehicle_keywords = [
+            "torton",
+            "rabon",
+            "tracto",
+            "tractocamion",
+            "camioneta",
+            "volteo",
+            "caja seca",
+            "remolque",
+        ]
+        for keyword in vehicle_keywords:
+            if keyword in normalized_text:
+                hints["vehicle_interest"] = keyword
+                break
+
+        comma_parts = [part.strip() for part in text.split(",") if part.strip()]
+        if len(comma_parts) >= 2:
+            maybe_name = comma_parts[0]
+            maybe_city = comma_parts[1]
+            if InboundMessageHandler._is_plain_text_name(maybe_name):
+                hints["name"] = maybe_name
+            if InboundMessageHandler._is_plain_text_name(maybe_city):
+                hints["city"] = maybe_city
+
+        return hints
+
+    @staticmethod
+    def _is_plain_text_name(value: str) -> bool:
+        if not value or len(value) > 60:
+            return False
+        if re.search(r"[0-9]", value):
+            return False
+        if re.search(r"[@:/]", value):
+            return False
+        return True
 
     async def _get_or_create_session(self, lead_id: UUID, occurred_at: datetime) -> Session:
         existing = await self._session_repository.get_by_lead_id(lead_id)

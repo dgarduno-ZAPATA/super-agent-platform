@@ -57,6 +57,9 @@ class ConversationAgent:
                 messages = [self._build_user_message(event)]
 
             system_prompt = self._build_system_prompt(session.current_state)
+            if session.current_state == "catalog_navigation":
+                inventory_context = self._build_catalog_inventory_prompt_context(event.text)
+                system_prompt = f"{system_prompt}\n\n{inventory_context}"
             llm_response = await self._run_tool_calling_loop(
                 messages=messages[-20:],
                 system_prompt=system_prompt,
@@ -133,6 +136,30 @@ class ConversationAgent:
             f"{self._brand.prompt}\n\n"
             f"ESTADO ACTUAL: {current_state}. "
             "Sigue estrictamente el objetivo de este estado segun tus instrucciones."
+        )
+
+    def _build_catalog_inventory_prompt_context(self, user_text: str | None) -> str:
+        product_hint = (user_text or "").strip() or None
+        inventory_snapshot = self._skill_registry.query_inventory(
+            product_name=product_hint,
+            max_results=8,
+        )
+        if product_hint and inventory_snapshot.startswith("No se encontraron productos para"):
+            inventory_snapshot = self._skill_registry.query_inventory(
+                product_name=None,
+                max_results=8,
+            )
+        logger.info(
+            "catalog_inventory_prompt_context_built",
+            query=product_hint,
+            has_results=not inventory_snapshot.startswith("No hay productos disponibles"),
+        )
+        return (
+            "CONTEXTO DE INVENTARIO REAL (OBLIGATORIO):\n"
+            f"{inventory_snapshot}\n\n"
+            "Regla estricta: solo puedes mencionar unidades que aparezcan en ese bloque. "
+            "Si no hay resultados, responde que no hay disponibilidad en este momento y "
+            "ofrece validar con el equipo humano."
         )
 
     def _format_history_as_messages(self, history: list[ConversationEvent]) -> list[ChatMessage]:

@@ -22,6 +22,7 @@ class SheetsInventoryAdapter(InventoryProvider):
         inventory_columns: InventoryColumnsConfig,
         fallback_products: list[ProductConfig],
         cache_ttl_seconds: int = 300,
+        allow_fallback: bool = False,
         http_get: Callable[[str], str] | None = None,
         now_provider: Callable[[], datetime] | None = None,
     ) -> None:
@@ -29,6 +30,7 @@ class SheetsInventoryAdapter(InventoryProvider):
         self._inventory_columns = inventory_columns
         self._fallback_products = fallback_products
         self._cache_ttl_seconds = cache_ttl_seconds
+        self._allow_fallback = allow_fallback
         self._http_get = http_get or self._default_http_get
         self._now_provider = now_provider or (lambda: datetime.now(UTC))
         self._cached_products: list[dict[str, object]] = []
@@ -41,16 +43,12 @@ class SheetsInventoryAdapter(InventoryProvider):
 
         products: list[dict[str, object]]
         if not self._csv_url:
-            products = self._load_from_fallback()
+            products = self._load_without_sheet()
         else:
             try:
                 products = self._load_from_sheet()
             except Exception:
-                logger.warning(
-                    "inventory_sheet_read_failed_using_fallback",
-                    inventory_sheet_url=self._csv_url,
-                )
-                products = self._load_from_fallback()
+                products = self._load_after_sheet_failure()
 
         self._cached_products = products
         self._cache_expires_at = now + timedelta(seconds=self._cache_ttl_seconds)
@@ -99,6 +97,28 @@ class SheetsInventoryAdapter(InventoryProvider):
                 }
             )
         return products
+
+    def _load_without_sheet(self) -> list[dict[str, object]]:
+        if self._allow_fallback:
+            logger.warning("inventory_sheet_missing_using_fallback")
+            return self._load_from_fallback()
+
+        logger.warning("inventory_sheet_missing_no_fallback")
+        return []
+
+    def _load_after_sheet_failure(self) -> list[dict[str, object]]:
+        if self._allow_fallback:
+            logger.warning(
+                "inventory_sheet_read_failed_using_fallback",
+                inventory_sheet_url=self._csv_url,
+            )
+            return self._load_from_fallback()
+
+        logger.warning(
+            "inventory_sheet_read_failed_no_fallback",
+            inventory_sheet_url=self._csv_url,
+        )
+        return []
 
     def _map_row(self, row: dict[str, str]) -> dict[str, object] | None:
         sku = self._resolve_sku(row)

@@ -1,8 +1,9 @@
-﻿from datetime import date
+from datetime import date
 
 import httpx
 import structlog
 
+from core.domain.lead import Lead
 from core.ports.crm_provider import CRMProvider
 
 logger = structlog.get_logger(__name__)
@@ -34,11 +35,17 @@ STAGE_LABELS = {
 
 
 class MondayCRMAdapter(CRMProvider):
-
     def __init__(self, api_key: str, board_id: str) -> None:
-        self._board_id = int(board_id)
+        normalized_api_key = api_key.strip()
+        normalized_board_id = board_id.strip()
+        if not normalized_api_key:
+            raise ValueError("MONDAY_API_KEY is empty")
+        if not normalized_board_id:
+            raise ValueError("MONDAY_BOARD_ID is empty")
+
+        self._board_id = int(normalized_board_id)
         self._headers = {
-            "Authorization": api_key,
+            "Authorization": normalized_api_key,
             "Content-Type": "application/json",
             "API-Version": "2024-01",
         }
@@ -48,16 +55,16 @@ class MondayCRMAdapter(CRMProvider):
         if variables:
             payload["variables"] = variables
         async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.post(MONDAY_API_URL, json=payload, headers=self._headers)
-            r.raise_for_status()
-            result = r.json()
+            response = await client.post(MONDAY_API_URL, json=payload, headers=self._headers)
+            response.raise_for_status()
+            result = response.json()
             if "errors" in result:
                 error_msg = result["errors"][0]["message"]
                 raise ValueError(f"Monday GraphQL error: {error_msg}")
             return result
 
     async def _find_item_by_phone(self, phone: str) -> str | None:
-        q = """
+        query = """
         query($board: ID!, $phone: String!) {
           items_page_by_column_values(
             limit: 1,
@@ -66,33 +73,43 @@ class MondayCRMAdapter(CRMProvider):
           ) { items { id } }
         }
         """
-        try:
-            data = await self._gql(q, {"board": str(self._board_id), "phone": phone})
-            items = data.get("data", {}).get("items_page_by_column_values", {}).get("items", [])
-            return items[0]["id"] if items else None
-        except Exception as e:
-            logger.error("monday_find_item_failed", phone=phone, error=str(e))
-            return None
+        data = await self._gql(query, {"board": str(self._board_id), "phone": phone})
+        items = data.get("data", {}).get("items_page_by_column_values", {}).get("items", [])
+        return items[0]["id"] if items else None
 
-    async def upsert_lead(self, lead) -> str:
+    async def upsert_lead(self, lead: Lead) -> str:
         import json
 
         today = date.today().isoformat()
         try:
             existing_id = await self._find_item_by_phone(lead.phone)
-            col_vals = json.dumps(
-                {
-                    COL_TELEFONO: lead.phone,
-                    COL_NOMBRE_COMPLETO: getattr(lead, "name", "") or "",
-                    COL_ORIGEN: getattr(lead, "source", "WhatsApp Bot") or "WhatsApp Bot",
-                    COL_CANAL: {"label": "WhatsApp Orgánico"},
-                    COL_SINCRONIZADO: {"label": "Sincronizado"},
-                    COL_ULTIMO_CONTACTO: {"date": today},
-                }
+            vehicle_interest = self._attr_as_text(lead, "vehicle_interest")
+            city = self._attr_as_text(lead, "city")
+            budget = self._attr_as_text(lead, "budget")
+            fsm_state = self._attr_as_text(lead, "fsm_state")
+            summary_text = self._build_summary_text(
+                city=city,
+                budget=budget,
+                vehicle_interest=vehicle_interest,
+                fsm_state=fsm_state,
+                last_message=self._attr_as_text(lead, "last_message_text"),
             )
+            column_values: dict[str, object] = {
+                COL_TELEFONO: lead.phone,
+                COL_NOMBRE_COMPLETO: lead.name or "",
+                COL_ORIGEN: lead.source or "WhatsApp Bot",
+                COL_VEHICULO: vehicle_interest or "",
+                COL_RESUMEN: {"text": summary_text} if summary_text else {"text": ""},
+                COL_CANAL: {"label": "WhatsApp Orgánico"},
+                COL_SINCRONIZADO: {"label": "Sincronizado"},
+                COL_ULTIMO_CONTACTO: {"date": today},
+            }
+            if fsm_state:
+                column_values[COL_ETAPA_BOT] = {"label": STAGE_LABELS.get(fsm_state, fsm_state)}
+            col_vals = json.dumps(column_values)
 
             if existing_id:
-                q = """
+                query = """
                 mutation($item: ID!, $board: ID!, $cols: JSON!) {
                   change_multiple_column_values(
                     item_id: $item, board_id: $board, column_values: $cols
@@ -100,15 +117,15 @@ class MondayCRMAdapter(CRMProvider):
                 }
                 """
                 await self._gql(
-                    q, {"item": existing_id, "board": str(self._board_id), "cols": col_vals}
+                    query, {"item": existing_id, "board": str(self._board_id), "cols": col_vals}
                 )
                 logger.info(
                     "monday_lead_upserted", item_id=existing_id, phone=lead.phone, action="updated"
                 )
                 return existing_id
 
-            name = getattr(lead, "name", "") or lead.phone
-            q = """
+            name = lead.name or lead.phone
+            query = """
             mutation($board: ID!, $name: String!, $cols: JSON!) {
               create_item(
                 board_id: $board, item_name: $name, column_values: $cols
@@ -116,20 +133,19 @@ class MondayCRMAdapter(CRMProvider):
             }
             """
             data = await self._gql(
-                q, {"board": str(self._board_id), "name": name, "cols": col_vals}
+                query, {"board": str(self._board_id), "name": name, "cols": col_vals}
             )
             item_id = data["data"]["create_item"]["id"]
             logger.info("monday_lead_upserted", item_id=item_id, phone=lead.phone, action="created")
             return item_id
-
-        except Exception as e:
+        except Exception as exc:
             logger.error(
                 "monday_api_error",
                 method="upsert_lead",
-                phone=getattr(lead, "phone", "?"),
-                error=str(e),
+                phone=lead.phone,
+                error=str(exc),
             )
-            return ""
+            raise
 
     async def change_stage(
         self,
@@ -147,19 +163,24 @@ class MondayCRMAdapter(CRMProvider):
         if lead_id and str(lead_id).isdigit():
             monday_id = str(lead_id)
         elif phone:
-            monday_id = await self._find_item_by_phone(phone)
+            try:
+                monday_id = await self._find_item_by_phone(phone)
+            except Exception as exc:
+                logger.error("monday_find_item_failed", phone=phone, error=str(exc))
+                raise
 
         if not monday_id:
-            logger.warning(
-                "monday_change_stage_skipped_no_item",
+            logger.error(
+                "monday_change_stage_failed_no_item",
                 lead_id=lead_id,
                 phone=phone,
                 new_stage=new_stage,
+                reason=reason,
             )
-            return
+            raise ValueError("monday item not found for stage change")
 
         try:
-            q = """
+            query = """
             mutation($item: ID!, $board: ID!, $cols: JSON!) {
               change_multiple_column_values(
                 item_id: $item, board_id: $board, column_values: $cols
@@ -172,7 +193,9 @@ class MondayCRMAdapter(CRMProvider):
                     COL_ULTIMO_CONTACTO: {"date": today},
                 }
             )
-            await self._gql(q, {"item": monday_id, "board": str(self._board_id), "cols": col_vals})
+            await self._gql(
+                query, {"item": monday_id, "board": str(self._board_id), "cols": col_vals}
+            )
             logger.info(
                 "monday_stage_changed",
                 lead_id=lead_id,
@@ -181,21 +204,22 @@ class MondayCRMAdapter(CRMProvider):
                 new_stage=new_stage,
                 label=label,
             )
-        except Exception as e:
+        except Exception as exc:
             logger.error(
                 "monday_api_error",
                 method="change_stage",
                 lead_id=lead_id,
                 monday_id=monday_id,
                 phone=phone,
-                error=str(e),
+                error=str(exc),
             )
+            raise
 
     async def add_note(self, lead_id: str, note: str, author: str) -> None:
         import json
 
         try:
-            q = """
+            query = """
             mutation($item: ID!, $board: ID!, $col: String!, $val: JSON!) {
               change_column_value(
                 item_id: $item, board_id: $board,
@@ -204,7 +228,7 @@ class MondayCRMAdapter(CRMProvider):
             }
             """
             await self._gql(
-                q,
+                query,
                 {
                     "item": lead_id,
                     "board": str(self._board_id),
@@ -213,8 +237,9 @@ class MondayCRMAdapter(CRMProvider):
                 },
             )
             logger.info("monday_note_added", lead_id=lead_id, author=author)
-        except Exception as e:
-            logger.error("monday_api_error", method="add_note", lead_id=lead_id, error=str(e))
+        except Exception as exc:
+            logger.error("monday_api_error", method="add_note", lead_id=lead_id, error=str(exc))
+            raise
 
     async def assign_owner(self, lead_id: str, owner_id: str) -> None:
         logger.info("monday_assign_owner_pending", lead_id=lead_id, owner_id=owner_id)
@@ -224,3 +249,33 @@ class MondayCRMAdapter(CRMProvider):
 
     async def schedule_reactivation(self, lead_id: str, not_before) -> None:
         logger.info("monday_reactivation_pending", lead_id=lead_id, not_before=str(not_before))
+
+    @staticmethod
+    def _attr_as_text(lead: Lead, key: str) -> str:
+        value = lead.attributes.get(key)
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value.strip()
+        return str(value)
+
+    @staticmethod
+    def _build_summary_text(
+        city: str,
+        budget: str,
+        vehicle_interest: str,
+        fsm_state: str,
+        last_message: str,
+    ) -> str:
+        parts: list[str] = []
+        if city:
+            parts.append(f"Ciudad: {city}")
+        if budget:
+            parts.append(f"Presupuesto: {budget}")
+        if vehicle_interest:
+            parts.append(f"Interes: {vehicle_interest}")
+        if fsm_state:
+            parts.append(f"FSM: {fsm_state}")
+        if last_message:
+            parts.append(f"Ultimo mensaje: {last_message}")
+        return " | ".join(parts)

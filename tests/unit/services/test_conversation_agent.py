@@ -153,6 +153,7 @@ class FakeSkillRegistry:
             content="Resultados de inventario: 1. Freightliner Cascadia",
         )
         self.calls: list[tuple[ToolCall, SkillExecutionContext]] = []
+        self.inventory_queries: list[dict[str, object]] = []
 
     def get_tool_schemas(self) -> list[ToolSchema]:
         return [
@@ -170,6 +171,15 @@ class FakeSkillRegistry:
     async def execute_tool(self, call: ToolCall, context: SkillExecutionContext) -> ToolResult:
         self.calls.append((call, context))
         return self.result
+
+    def query_inventory(self, product_name: str | None = None, max_results: int = 20) -> str:
+        self.inventory_queries.append(
+            {
+                "product_name": product_name,
+                "max_results": max_results,
+            }
+        )
+        return "Resultados de inventario:\n1. Freightliner Cascadia 2020"
 
 
 def _conversation_id(phone: str = "5214421234567") -> UUID:
@@ -321,6 +331,8 @@ async def test_tool_call_flow_executes_skill_and_returns_final_text() -> None:
     await agent.respond(_event("Busco un Cascadia"), _session("catalog_navigation"))
 
     assert len(llm.calls) == 2
+    assert len(skills.inventory_queries) >= 1
+    assert "CONTEXTO DE INVENTARIO REAL (OBLIGATORIO):" in str(llm.calls[0]["system"])
     assert len(skills.calls) == 1
     second_call_messages = llm.calls[1]["messages"]
     assert isinstance(second_call_messages, list)

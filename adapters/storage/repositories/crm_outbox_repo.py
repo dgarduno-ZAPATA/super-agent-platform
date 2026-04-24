@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
+import structlog
 from sqlalchemy import Text, cast, func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError, ProgrammingError
@@ -12,6 +13,8 @@ from adapters.storage.db import session_scope
 from adapters.storage.models import CRMDLQModel, CRMOutboxModel
 from core.domain.crm_outbox import OutboxItem
 from core.ports.repositories import CRMOutboxRepository
+
+logger = structlog.get_logger("super_agent_platform.adapters.storage.crm_outbox_repo")
 
 
 def _ensure_utc(value: datetime) -> datetime:
@@ -63,11 +66,18 @@ class PostgresCRMOutboxRepository(CRMOutboxRepository):
                     created_at=created_at,
                     updated_at=created_at,
                 )
-                .on_conflict_do_nothing(
+                .on_conflict_do_update(
                     index_elements=[CRMOutboxModel.aggregate_id, CRMOutboxModel.operation],
                     # Keep this literal so Postgres can match the partial
                     # unique index predicate exactly.
                     index_where=text("status = 'pending'"),
+                    set_={
+                        "payload": payload,
+                        "attempts": 0,
+                        "next_retry_at": None,
+                        "last_error": None,
+                        "updated_at": created_at,
+                    },
                 )
                 .returning(CRMOutboxModel.id)
             )
@@ -107,6 +117,13 @@ class PostgresCRMOutboxRepository(CRMOutboxRepository):
                         )
                         if created_id is None:
                             raise
+                else:
+                    await self._update_pending_payload(
+                        session=session,
+                        item_id=created_id,
+                        payload=payload,
+                        updated_at=created_at,
+                    )
 
             if created_id is None:
                 existing_id = await self._get_existing_pending_id(
@@ -117,6 +134,12 @@ class PostgresCRMOutboxRepository(CRMOutboxRepository):
                         "crm_outbox_enqueue_failed: pending operation not created nor found"
                     )
                 created_id = existing_id
+            logger.info(
+                "crm_outbox_operation_enqueued",
+                outbox_item_id=str(created_id),
+                aggregate_id=aggregate_value,
+                operation=operation,
+            )
 
         return created_id
 
@@ -246,3 +269,20 @@ class PostgresCRMOutboxRepository(CRMOutboxRepository):
             )
         )
         return existing_result.scalar_one_or_none()
+
+    @staticmethod
+    async def _update_pending_payload(
+        session: AsyncSession,
+        item_id: UUID,
+        payload: dict[str, object],
+        updated_at: datetime,
+    ) -> None:
+        result = await session.execute(select(CRMOutboxModel).where(CRMOutboxModel.id == item_id))
+        model = result.scalar_one_or_none()
+        if model is None:
+            return
+        model.payload = payload
+        model.attempts = 0
+        model.next_retry_at = None
+        model.last_error = None
+        model.updated_at = updated_at

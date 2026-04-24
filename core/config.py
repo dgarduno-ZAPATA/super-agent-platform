@@ -48,8 +48,8 @@ class Settings(BaseSettings):
         default="gpt-4o-mini",
         alias="OPENAI_MODEL_NAME",
     )
-    monday_api_key: str = ""
-    monday_board_id: str = ""
+    monday_api_key: str = Field(default="", alias="MONDAY_API_KEY")
+    monday_board_id: str = Field(default="", alias="MONDAY_BOARD_ID")
     branch_sheet_url: str = Field(
         default=(
             "https://docs.google.com/spreadsheets/d/e/2PACX-1vTILMYUv--RRf7VSfpW5HjiyAyBMx5eFCpMk"
@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     )
     branch_cache_ttl_seconds: int = Field(default=600, alias="BRANCH_CACHE_TTL_SECONDS")
     inventory_cache_ttl_seconds: int = Field(default=300, alias="INVENTORY_CACHE_TTL_SECONDS")
+    inventory_fallback_enabled: bool = Field(default=False, alias="INVENTORY_FALLBACK_ENABLED")
     campaign_batch_size: int = Field(default=10, alias="CAMPAIGN_BATCH_SIZE")
     campaign_rate_limit_ms: int = Field(default=300, alias="CAMPAIGN_RATE_LIMIT_MS")
     campaign_scheduler_interval_seconds: int = Field(

@@ -112,7 +112,11 @@ def get_messaging_provider() -> MessagingProvider:
 
 
 def get_crm_provider() -> CRMProvider:
-    return MondayCRMAdapter()
+    settings = get_settings()
+    return MondayCRMAdapter(
+        api_key=settings.monday_api_key,
+        board_id=settings.monday_board_id,
+    )
 
 
 def get_branch_provider() -> BranchProvider:
@@ -133,6 +137,7 @@ def get_inventory_provider(
         inventory_columns=brand.brand.inventory_columns,
         fallback_products=brand.products.products,
         cache_ttl_seconds=settings.inventory_cache_ttl_seconds,
+        allow_fallback=settings.inventory_fallback_enabled,
     )
 
 

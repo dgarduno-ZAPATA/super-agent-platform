@@ -29,6 +29,7 @@ def test_parse_csv_maps_columns_correctly() -> None:
         csv_url="https://example.com/inventory.csv",
         inventory_columns=InventoryColumnsConfig(),
         fallback_products=_fallback_products(),
+        allow_fallback=True,
         http_get=lambda _: csv_text,
     )
 
@@ -62,6 +63,7 @@ def test_search_products_filters_by_query() -> None:
         csv_url="https://example.com/inventory.csv",
         inventory_columns=InventoryColumnsConfig(),
         fallback_products=_fallback_products(),
+        allow_fallback=True,
         http_get=lambda _: csv_text,
     )
 
@@ -79,6 +81,7 @@ def test_fallback_to_yaml_when_no_url() -> None:
         csv_url=None,
         inventory_columns=InventoryColumnsConfig(),
         fallback_products=_fallback_products(),
+        allow_fallback=True,
     )
 
     products = adapter.get_products()
@@ -86,6 +89,19 @@ def test_fallback_to_yaml_when_no_url() -> None:
     assert len(products) == 1
     assert products[0]["name"] == "Freightliner Cascadia 2020"
     assert products[0]["sku"] == "FL-CASCADIA-2020"
+
+
+def test_no_fallback_returns_empty_when_sheet_missing() -> None:
+    adapter = SheetsInventoryAdapter(
+        csv_url=None,
+        inventory_columns=InventoryColumnsConfig(),
+        fallback_products=_fallback_products(),
+        allow_fallback=False,
+    )
+
+    products = adapter.get_products()
+
+    assert products == []
 
 
 def test_cache_avoids_second_http_request() -> None:
@@ -113,6 +129,7 @@ def test_cache_avoids_second_http_request() -> None:
         inventory_columns=InventoryColumnsConfig(),
         fallback_products=_fallback_products(),
         cache_ttl_seconds=300,
+        allow_fallback=True,
         http_get=_http_get,
         now_provider=_now,
     )

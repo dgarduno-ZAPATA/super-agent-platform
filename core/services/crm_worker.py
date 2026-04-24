@@ -26,6 +26,11 @@ class CRMSyncWorker:
 
         for item in items:
             try:
+                logger.info(
+                    "crm_sync_item_dispatching",
+                    item_id=str(item.id),
+                    operation=item.operation,
+                )
                 await self._dispatch_operation(item.operation, item.payload)
                 await self._crm_outbox_repository.mark_as_done(item.id)
                 logger.info("crm_sync_item_done", item_id=str(item.id), operation=item.operation)

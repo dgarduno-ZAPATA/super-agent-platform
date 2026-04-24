@@ -131,7 +131,7 @@ class SkillRegistry:
             )
         return "\n".join(lines)
 
-    def query_inventory(self, product_name: str | None = None) -> str:
+    def query_inventory(self, product_name: str | None = None, max_results: int = 20) -> str:
         query_term = (product_name or "").strip()
         filters: dict[str, object] = {}
         logger.info(
@@ -159,7 +159,7 @@ class SkillRegistry:
             query=query_term,
             total_results=len(matches),
             skus=[str(product.get("sku", "")) for product in matches[:5]],
-            used_fallback=False,
+            used_fallback=fallback_used,
         )
         if not matches:
             if product_name and product_name.strip():
@@ -167,7 +167,8 @@ class SkillRegistry:
             return "No hay productos disponibles en inventario."
 
         lines = ["Resultados de inventario:"]
-        for index, product in enumerate(matches, start=1):
+        display_matches = matches[:max_results]
+        for index, product in enumerate(display_matches, start=1):
             sku = str(product.get("sku", "N/A"))
             name = str(product.get("name", "Sin nombre"))
             price = str(product.get("price", "No disponible"))
@@ -177,6 +178,10 @@ class SkillRegistry:
                 f"{index}. {name} (SKU: {sku}) | "
                 f"Precio: {price} | Disponibilidad: {availability} | "
                 f"Descripcion: {description}"
+            )
+        if len(matches) > len(display_matches):
+            lines.append(
+                f"Se muestran {len(display_matches)} de {len(matches)} resultados totales."
             )
         return "\n".join(lines)
 
