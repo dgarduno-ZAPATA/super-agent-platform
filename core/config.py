@@ -40,7 +40,7 @@ class Settings(BaseSettings):
         alias="VERTEX_MODEL_NAME",
     )
     vertex_fallback_model_name: str = Field(
-        default="gemini-1.5-flash",
+        default="gemini-2.5-flash-lite",
         alias="VERTEX_FALLBACK_MODEL_NAME",
     )
     vertex_embedding_model_name: str = Field(

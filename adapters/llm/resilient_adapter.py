@@ -17,7 +17,7 @@ class ResilientLLMAdapter(LLMProvider):
         self,
         primary: LLMProvider,
         fallback: LLMProvider,
-        timeout_seconds: float = 15.0,
+        timeout_seconds: float = 30.0,
     ) -> None:
         self._primary = primary
         self._fallback = fallback
@@ -42,7 +42,11 @@ class ResilientLLMAdapter(LLMProvider):
             )
         except Exception as exc:
             sentry_sdk.capture_exception(exc)
-            logger.warning("llm_primary_failed_using_fallback", error=str(exc))
+            logger.warning(
+                "llm_primary_failed_using_fallback",
+                error=self._format_exception(exc),
+                error_type=type(exc).__name__,
+            )
             try:
                 return await asyncio.wait_for(
                     self._fallback.complete(
@@ -55,7 +59,11 @@ class ResilientLLMAdapter(LLMProvider):
                 )
             except Exception as fallback_exc:
                 sentry_sdk.capture_exception(fallback_exc)
-                logger.error("llm_fallback_also_failed", error=str(fallback_exc))
+                logger.error(
+                    "llm_fallback_also_failed",
+                    error=self._format_exception(fallback_exc),
+                    error_type=type(fallback_exc).__name__,
+                )
                 raise
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
@@ -63,3 +71,10 @@ class ResilientLLMAdapter(LLMProvider):
 
     async def transcribe_audio(self, audio_bytes: bytes, mime_type: str) -> str:
         return await self._primary.transcribe_audio(audio_bytes, mime_type)
+
+    @staticmethod
+    def _format_exception(exc: Exception) -> str:
+        text = str(exc).strip()
+        if text:
+            return text
+        return repr(exc)
