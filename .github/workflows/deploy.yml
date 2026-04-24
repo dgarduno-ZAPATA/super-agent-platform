@@ -32,12 +32,13 @@ jobs:
         with:
           project_id: ${{ env.PROJECT_ID }}
 
-      - name: Build and push image via Cloud Build
+      - name: Run deploy pipeline in Cloud Build
         id: cloud_build
         run: |
           BUILD_ID=$(gcloud builds submit \
-            --tag "${{ env.IMAGE }}" \
-            --timeout=20m \
+            --config cloudbuild.deploy.yaml \
+            --substitutions="_IMAGE=${{ env.IMAGE }},_REGION=${{ env.REGION }},_SERVICE=${{ env.SERVICE }}" \
+            --timeout=30m \
             --async \
             --format='value(id)')
           echo "Build submitted: ${BUILD_ID}"
@@ -48,7 +49,7 @@ jobs:
           BUILD_ID="${{ steps.cloud_build.outputs.build_id }}"
           TERMINAL_FAILURE_STATES="FAILURE INTERNAL_ERROR TIMEOUT CANCELLED EXPIRED"
 
-          for _ in {1..120}; do
+          for _ in {1..180}; do
             STATUS=$(gcloud builds describe "${BUILD_ID}" --format='value(status)')
             echo "Cloud Build status: ${STATUS}"
 
@@ -65,13 +66,5 @@ jobs:
             sleep 10
           done
 
-          echo "Cloud Build did not complete within the expected timeout window."
+          echo "Cloud Build did not complete within the expected timeout window (30 minutes)."
           exit 1
-
-      - name: Deploy to Cloud Run
-        run: |
-          gcloud run deploy ${{ env.SERVICE }} \
-            --image=${{ env.IMAGE }} \
-            --region=${{ env.REGION }} \
-            --platform=managed \
-            --quiet
