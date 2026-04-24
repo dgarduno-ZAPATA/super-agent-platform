@@ -325,3 +325,30 @@ async def test_send_document_action_falls_back_to_text_when_provider_fails() -> 
     assert fallback["to"] == "5214421234567"
     assert fallback["correlation_id"] == "wamid-003"
     assert "fichas tecnicas disponibles" in fallback["text"]
+
+
+@pytest.mark.asyncio
+async def test_send_document_action_skips_silently_when_no_url_configured() -> None:
+    messaging = FakeMessagingProvider()
+    brand = _build_brand()
+    # Strip document_url from all products to simulate missing configuration
+    for product in brand.products.products:
+        product.metadata.pop("document_url", None)
+
+    registry = build_default_action_registry(
+        FSMActionDependencies(
+            messaging_provider=messaging,
+            brand=brand,
+        ),
+    )
+
+    await registry["send_document"](
+        {
+            "phone": "5214421234567",
+            "product_sku": "FL-CASCADIA-2020",
+            "correlation_id": "wamid-004",
+        }
+    )
+
+    assert len(messaging.sent_documents) == 0
+    assert len(messaging.sent_messages) == 0
