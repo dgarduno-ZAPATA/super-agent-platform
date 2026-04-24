@@ -270,13 +270,18 @@ class VertexLLMAdapter(LLMProvider):
     def _map_message(message: ChatMessage) -> dict[str, Any]:
         if message.role == "tool":
             tool_name = message.name or str(message.metadata.get("tool_name") or "")
-            response_payload: dict[str, object] = {
-                "name": tool_name,
-                "response": {"content": message.content},
+            # Vertex functionResponse does not accept an "id" field.
+            return {
+                "role": "user",
+                "parts": [
+                    {
+                        "functionResponse": {
+                            "name": tool_name,
+                            "response": {"content": message.content},
+                        }
+                    }
+                ],
             }
-            if message.tool_call_id:
-                response_payload["id"] = message.tool_call_id
-            return {"role": "user", "parts": [{"functionResponse": response_payload}]}
 
         role = "model" if message.role in {"assistant", "model"} else "user"
         parts: list[dict[str, object]] = []
