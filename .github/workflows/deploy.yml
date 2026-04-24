@@ -36,7 +36,8 @@ jobs:
         run: |
           gcloud builds submit \
             --tag ${{ env.IMAGE }} \
-            --timeout=20m
+            --timeout=20m \
+            --suppress-logs
 
       - name: Deploy to Cloud Run
         run: |
