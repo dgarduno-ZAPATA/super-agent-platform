@@ -76,13 +76,12 @@ def test_search_products_filters_by_query() -> None:
     assert fallback_sku == "3ALACWFC4JDLM6789"
 
 
-def test_search_products_matches_segment_tokens_like_torton() -> None:
+def test_search_products_matches_brand_and_model_columns_for_kenworth() -> None:
     csv_text = (
-        "VIN COMPLETO,VIN,Centro,UbicaciÃ³n FÃ­sica,Marca,Modelo,AÃ±o,Precio Sug. de Venta,"
-        "KilÃ³metros,Motor,TransmisiÃ³n,Color,Dormitorio,Paso,PromociÃ³n,Imagen Portada\n"
-        "3AKJGLD59ESF12345,ESF12345,QUERETARO,PATIO A,FREIGHTLINER,M2,2020,"
-        '"$1,200,000.00","450,000",Detroit DD15,DT12,Blanco,60,3.58,SIN PROMO,'
-        "https://img.example.com/m2.jpg\n"
+        "VIN COMPLETO,VIN,Centro,Ubicación Física,Marca,Modelo,Año,Precio Sug. de Venta,"
+        "Kilómetros,Motor,Transmisión,Color,Dormitorio,Paso,Promoción,Imagen Portada\n"
+        "3ALACWFC4JDLM6789,,LEON,PATIO B,KENWORTH,T 680,2021,1980000,320000,Cummins X15,"
+        "Eaton Fuller,Rojo,52,3.70,PROMO,https://img.example.com/t680.jpg\n"
     )
     adapter = SheetsInventoryAdapter(
         csv_url="https://example.com/inventory.csv",
@@ -92,12 +91,32 @@ def test_search_products_matches_segment_tokens_like_torton() -> None:
         http_get=lambda _: csv_text,
     )
 
-    matches = adapter.search_products("Que opciones de torton tienes?")
+    matches = adapter.search_products("Que opciones de Kenworth tienes?")
 
     assert len(matches) == 1
-    metadata = matches[0].get("metadata")
-    assert isinstance(metadata, dict)
-    assert metadata.get("segment") == "torton"
+    assert matches[0]["name"] == "KENWORTH T 680 2021"
+    assert matches[0]["price"] == "1980000.00"
+
+
+def test_price_uses_precio_sugerido_de_venta_column() -> None:
+    csv_text = (
+        "VIN COMPLETO,VIN,Centro,Ubicación Física,Marca,Modelo,Año,Precio Sug. de Venta,"
+        "Kilómetros,Motor,Transmisión,Color,Dormitorio,Paso,Promoción,Imagen Portada,Precio Lista\n"
+        "3ALACWFC4JDLM6789,,LEON,PATIO B,KENWORTH,T 680,2021,1980000,320000,Cummins X15,"
+        "Eaton Fuller,Rojo,52,3.70,PROMO,https://img.example.com/t680.jpg,999999\n"
+    )
+    adapter = SheetsInventoryAdapter(
+        csv_url="https://example.com/inventory.csv",
+        inventory_columns=InventoryColumnsConfig(price="Precio Lista"),
+        fallback_products=_fallback_products(),
+        allow_fallback=True,
+        http_get=lambda _: csv_text,
+    )
+
+    products = adapter.get_products()
+
+    assert len(products) == 1
+    assert products[0]["price"] == "1980000.00"
 
 
 def test_fallback_to_yaml_when_no_url() -> None:

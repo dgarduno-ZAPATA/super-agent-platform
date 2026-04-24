@@ -64,11 +64,13 @@ class SheetsInventoryAdapter(InventoryProvider):
         query_tokens = self._extract_search_tokens(query)
         filtered: list[dict[str, object]] = []
         for item in products:
-            searchable = self._build_searchable_text(item)
-            if normalized_query in searchable:
+            brand_model = self._build_brand_model_text(item)
+            if self._matches_query(brand_model, normalized_query, query_tokens):
                 filtered.append(item)
                 continue
-            if query_tokens and any(token in searchable for token in query_tokens):
+
+            searchable = self._build_searchable_text(item)
+            if self._matches_query(searchable, normalized_query, query_tokens):
                 filtered.append(item)
         return filtered
 
@@ -79,15 +81,22 @@ class SheetsInventoryAdapter(InventoryProvider):
             mapped = self._map_row(row)
             if mapped is not None:
                 products.append(mapped)
-        sample_segments = [
-            str(product.get("metadata", {}).get("segment", ""))
+        sample_brand_model = [
+            " ".join(
+                part
+                for part in (
+                    str(product.get("metadata", {}).get("brand", "")),
+                    str(product.get("metadata", {}).get("model", "")),
+                )
+                if part
+            )
             for product in products[:5]
             if isinstance(product.get("metadata"), dict)
         ]
         logger.info(
             "inventory_sheet_loaded",
             total_items=len(products),
-            sample_segments=sample_segments,
+            sample_brand_model=sample_brand_model,
         )
         return products
 
@@ -132,18 +141,21 @@ class SheetsInventoryAdapter(InventoryProvider):
         sku = self._resolve_sku(row)
         if not sku:
             return None
-        brand = self._safe_get(row, self._inventory_columns.brand)
-        model = self._safe_get(row, self._inventory_columns.name)
-        year = self._safe_get(row, self._inventory_columns.year)
+        brand = self._safe_get_any(row, ["Marca", self._inventory_columns.brand])
+        model = self._safe_get_any(row, ["Modelo", self._inventory_columns.name])
+        year = self._safe_get_any(row, ["Año", "AÃ±o", self._inventory_columns.year])
         name = " ".join(part for part in (brand, model, year) if part).strip()
         if not name:
             return None
 
-        engine = self._safe_get(row, self._inventory_columns.engine)
-        transmission = self._safe_get(row, self._inventory_columns.transmission)
+        engine = self._safe_get_any(row, ["Motor", self._inventory_columns.engine])
+        transmission = self._safe_get_any(
+            row, ["Transmisión", "TransmisiÃ³n", self._inventory_columns.transmission]
+        )
         color = self._safe_get(row, self._inventory_columns.color)
-        segment = self._derive_segment(row=row, brand=brand, model=model)
-        km = self._normalize_km_value(self._safe_get(row, self._inventory_columns.km))
+        km = self._normalize_km_value(
+            self._safe_get_any(row, ["Kilómetros", "KilÃ³metros", self._inventory_columns.km])
+        )
         km_value = str(km) if km is not None else "No disponible"
         description = (
             f"Motor: {engine or 'No disponible'} | "
@@ -151,9 +163,20 @@ class SheetsInventoryAdapter(InventoryProvider):
             f"Km: {km_value} | "
             f"Color: {color or 'No disponible'}"
         )
-        price = self._normalize_price_value(self._safe_get(row, self._inventory_columns.price))
+        price = self._normalize_price_value(
+            self._safe_get_any(
+                row,
+                [
+                    "Precio Sug. de Venta",
+                    "Precio Sugerido de Venta",
+                    self._inventory_columns.price,
+                ],
+            )
+        )
         category = brand or "No disponible"
         metadata = {
+            "brand": brand,
+            "model": model,
             "km": km,
             "engine": engine or "",
             "transmission": transmission or "",
@@ -166,10 +189,6 @@ class SheetsInventoryAdapter(InventoryProvider):
             "promotion": self._safe_get(row, self._inventory_columns.promotion),
             "image_url": self._safe_get(row, self._inventory_columns.image_url),
             "sku_full": self._safe_get(row, self._inventory_columns.sku_full),
-            "segment": segment,
-            "subempresa": self._safe_get_any(
-                row, ["Subempresa", "Sub Empresa", "subempresa", "segmento"]
-            ),
         }
 
         return {
@@ -207,56 +226,39 @@ class SheetsInventoryAdapter(InventoryProvider):
                 return value
         return ""
 
-    def _derive_segment(self, row: dict[str, str], brand: str, model: str) -> str:
-        explicit = self._safe_get_any(
-            row,
-            [
-                "Segmento",
-                "segmento",
-                "Tipo de unidad",
-                "Tipo Unidad",
-                "Categoria",
-                "Categoría",
-                "Clase",
-            ],
-        )
-        if explicit:
-            return explicit
-
-        combined = self._normalize_text(f"{brand} {model}")
-        if any(token in combined for token in {"m2", "4400", "4300", "torton", "rabon"}):
-            return "torton"
-        if any(
-            token in combined
-            for token in {
-                "cascadia",
-                "prostar",
-                "lt hi rise",
-                "t 680",
-                "t 660",
-                "vnl64t",
-                "tracto",
-                "tractor",
-            }
-        ):
-            return "tractocamion"
-        if "volteo" in combined:
-            return "volteo"
-        if "camioneta" in combined:
-            return "camioneta"
-        return ""
-
     def _build_searchable_text(self, item: dict[str, object]) -> str:
+        metadata = item.get("metadata")
+        brand = ""
+        model = ""
+        if isinstance(metadata, dict):
+            brand = str(metadata.get("brand", ""))
+            model = str(metadata.get("model", ""))
+
         base_parts = [
             str(item.get("sku", "")),
             str(item.get("name", "")),
+            brand,
+            model,
             str(item.get("description", "")),
             str(item.get("category", "")),
         ]
-        metadata = item.get("metadata")
         if isinstance(metadata, dict):
             base_parts.extend(str(value) for value in metadata.values())
         return self._normalize_text(" ".join(base_parts))
+
+    def _build_brand_model_text(self, item: dict[str, object]) -> str:
+        metadata = item.get("metadata")
+        if not isinstance(metadata, dict):
+            return ""
+        return self._normalize_text(f"{metadata.get('brand', '')} {metadata.get('model', '')}")
+
+    @staticmethod
+    def _matches_query(text: str, normalized_query: str, query_tokens: list[str]) -> bool:
+        if not text:
+            return False
+        if normalized_query in text:
+            return True
+        return bool(query_tokens) and any(token in text for token in query_tokens)
 
     @staticmethod
     def _normalize_text(value: str) -> str:
