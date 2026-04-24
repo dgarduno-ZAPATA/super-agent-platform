@@ -36,8 +36,12 @@ class Settings(BaseSettings):
     gcp_project_id: str = Field(default="change-me-project", alias="GCP_PROJECT_ID")
     gcp_region: str = Field(default="us-central1", alias="GCP_REGION")
     vertex_model_name: str = Field(
-        default="gemini-2.5-flash-lite",
+        default="gemini-2.5-flash",
         alias="VERTEX_MODEL_NAME",
+    )
+    vertex_fallback_model_name: str = Field(
+        default="gemini-1.5-flash",
+        alias="VERTEX_FALLBACK_MODEL_NAME",
     )
     vertex_embedding_model_name: str = Field(
         default="text-embedding-004",

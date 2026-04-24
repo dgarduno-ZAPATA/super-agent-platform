@@ -55,13 +55,14 @@ class ConversationAgent:
             messages = self._ensure_current_user_message(messages=messages, event=event)
             if not messages:
                 messages = [self._build_user_message(event)]
+            messages = self._trim_messages_for_budget(messages, max_total_chars=4000)
 
             system_prompt = self._build_system_prompt(session.current_state)
             if session.current_state == "catalog_navigation":
                 inventory_context = self._build_catalog_inventory_prompt_context(event.text)
                 system_prompt = f"{system_prompt}\n\n{inventory_context}"
             llm_response = await self._run_tool_calling_loop(
-                messages=messages[-20:],
+                messages=messages[-12:],
                 system_prompt=system_prompt,
                 context=SkillExecutionContext(
                     phone=event.from_phone,
@@ -142,13 +143,8 @@ class ConversationAgent:
         product_hint = (user_text or "").strip() or None
         inventory_snapshot = self._skill_registry.query_inventory(
             product_name=product_hint,
-            max_results=8,
+            max_results=3,
         )
-        if product_hint and inventory_snapshot.startswith("No se encontraron productos para"):
-            inventory_snapshot = self._skill_registry.query_inventory(
-                product_name=None,
-                max_results=8,
-            )
         logger.info(
             "catalog_inventory_prompt_context_built",
             query=product_hint,
@@ -161,6 +157,30 @@ class ConversationAgent:
             "Si no hay resultados, responde que no hay disponibilidad en este momento y "
             "ofrece validar con el equipo humano."
         )
+
+    def _trim_messages_for_budget(
+        self, messages: list[ChatMessage], max_total_chars: int
+    ) -> list[ChatMessage]:
+        if max_total_chars <= 0:
+            return messages[-1:] if messages else []
+
+        trimmed: list[ChatMessage] = []
+        total = 0
+        for message in reversed(messages):
+            content_len = len(message.content)
+            if trimmed and total + content_len > max_total_chars:
+                break
+            trimmed.append(message)
+            total += content_len
+        trimmed.reverse()
+        if len(trimmed) != len(messages):
+            logger.info(
+                "conversation_messages_trimmed_for_budget",
+                original_count=len(messages),
+                trimmed_count=len(trimmed),
+                max_total_chars=max_total_chars,
+            )
+        return trimmed
 
     def _format_history_as_messages(self, history: list[ConversationEvent]) -> list[ChatMessage]:
         messages: list[ChatMessage] = []

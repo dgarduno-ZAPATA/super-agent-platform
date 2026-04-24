@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import re
+import unicodedata
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from io import StringIO
@@ -55,22 +56,19 @@ class SheetsInventoryAdapter(InventoryProvider):
         return products
 
     def search_products(self, query: str) -> list[dict[str, object]]:
-        normalized_query = query.strip().casefold()
+        normalized_query = self._normalize_text(query)
         products = self.get_products()
         if not normalized_query:
             return products
 
+        query_tokens = self._extract_search_tokens(query)
         filtered: list[dict[str, object]] = []
         for item in products:
-            searchable = " ".join(
-                [
-                    str(item.get("sku", "")),
-                    str(item.get("name", "")),
-                    str(item.get("description", "")),
-                    str(item.get("category", "")),
-                ]
-            ).casefold()
+            searchable = self._build_searchable_text(item)
             if normalized_query in searchable:
+                filtered.append(item)
+                continue
+            if query_tokens and any(token in searchable for token in query_tokens):
                 filtered.append(item)
         return filtered
 
@@ -81,6 +79,16 @@ class SheetsInventoryAdapter(InventoryProvider):
             mapped = self._map_row(row)
             if mapped is not None:
                 products.append(mapped)
+        sample_segments = [
+            str(product.get("metadata", {}).get("segment", ""))
+            for product in products[:5]
+            if isinstance(product.get("metadata"), dict)
+        ]
+        logger.info(
+            "inventory_sheet_loaded",
+            total_items=len(products),
+            sample_segments=sample_segments,
+        )
         return products
 
     def _load_from_fallback(self) -> list[dict[str, object]]:
@@ -134,6 +142,7 @@ class SheetsInventoryAdapter(InventoryProvider):
         engine = self._safe_get(row, self._inventory_columns.engine)
         transmission = self._safe_get(row, self._inventory_columns.transmission)
         color = self._safe_get(row, self._inventory_columns.color)
+        segment = self._derive_segment(row=row, brand=brand, model=model)
         km = self._normalize_km_value(self._safe_get(row, self._inventory_columns.km))
         km_value = str(km) if km is not None else "No disponible"
         description = (
@@ -157,6 +166,10 @@ class SheetsInventoryAdapter(InventoryProvider):
             "promotion": self._safe_get(row, self._inventory_columns.promotion),
             "image_url": self._safe_get(row, self._inventory_columns.image_url),
             "sku_full": self._safe_get(row, self._inventory_columns.sku_full),
+            "segment": segment,
+            "subempresa": self._safe_get_any(
+                row, ["Subempresa", "Sub Empresa", "subempresa", "segmento"]
+            ),
         }
 
         return {
@@ -182,6 +195,101 @@ class SheetsInventoryAdapter(InventoryProvider):
     @staticmethod
     def _safe_get(row: dict[str, str], column: str) -> str:
         return str(row.get(column, "")).strip()
+
+    def _safe_get_any(self, row: dict[str, str], candidates: list[str]) -> str:
+        normalized_map = {self._normalize_text(key): key for key in row}
+        for candidate in candidates:
+            found_key = normalized_map.get(self._normalize_text(candidate))
+            if found_key is None:
+                continue
+            value = str(row.get(found_key, "")).strip()
+            if value:
+                return value
+        return ""
+
+    def _derive_segment(self, row: dict[str, str], brand: str, model: str) -> str:
+        explicit = self._safe_get_any(
+            row,
+            [
+                "Segmento",
+                "segmento",
+                "Tipo de unidad",
+                "Tipo Unidad",
+                "Categoria",
+                "Categoría",
+                "Clase",
+            ],
+        )
+        if explicit:
+            return explicit
+
+        combined = self._normalize_text(f"{brand} {model}")
+        if any(token in combined for token in {"m2", "4400", "4300", "torton", "rabon"}):
+            return "torton"
+        if any(
+            token in combined
+            for token in {
+                "cascadia",
+                "prostar",
+                "lt hi rise",
+                "t 680",
+                "t 660",
+                "vnl64t",
+                "tracto",
+                "tractor",
+            }
+        ):
+            return "tractocamion"
+        if "volteo" in combined:
+            return "volteo"
+        if "camioneta" in combined:
+            return "camioneta"
+        return ""
+
+    def _build_searchable_text(self, item: dict[str, object]) -> str:
+        base_parts = [
+            str(item.get("sku", "")),
+            str(item.get("name", "")),
+            str(item.get("description", "")),
+            str(item.get("category", "")),
+        ]
+        metadata = item.get("metadata")
+        if isinstance(metadata, dict):
+            base_parts.extend(str(value) for value in metadata.values())
+        return self._normalize_text(" ".join(base_parts))
+
+    @staticmethod
+    def _normalize_text(value: str) -> str:
+        normalized = unicodedata.normalize("NFKD", value or "")
+        without_accents = "".join(char for char in normalized if not unicodedata.combining(char))
+        lowered = without_accents.casefold()
+        return re.sub(r"\s+", " ", lowered).strip()
+
+    @staticmethod
+    def _extract_search_tokens(query: str) -> list[str]:
+        stopwords = {
+            "que",
+            "tienes",
+            "tienen",
+            "opciones",
+            "de",
+            "del",
+            "la",
+            "el",
+            "por",
+            "para",
+            "quiero",
+            "busco",
+            "me",
+            "interesa",
+            "un",
+            "una",
+            "los",
+            "las",
+        }
+        normalized = SheetsInventoryAdapter._normalize_text(query)
+        tokens = re.findall(r"[a-z0-9]+", normalized)
+        return [token for token in tokens if len(token) > 2 and token not in stopwords]
 
     @staticmethod
     def _normalize_price_value(raw_price: str) -> str:

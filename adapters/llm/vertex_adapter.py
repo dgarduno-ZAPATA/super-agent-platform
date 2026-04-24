@@ -52,15 +52,22 @@ class VertexLLMAdapter(LLMProvider):
                 {"functionDeclarations": [self._map_tool_schema(tool) for tool in tools]}
             ]
 
-        response = await self._client.post(
-            endpoint,
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-        )
-        response.raise_for_status()
+        try:
+            response = await self._client.post(
+                endpoint,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            body_preview = exc.response.text[:800]
+            raise RuntimeError(
+                "vertex completion request failed with "
+                f"{exc.response.status_code}: {body_preview}"
+            ) from exc
 
         body = response.json()
         candidates = body.get("candidates")

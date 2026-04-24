@@ -148,10 +148,18 @@ def get_inventory_provider(
 def get_llm_provider() -> LLMProvider:
     primary = get_vertex_llm_adapter()
     settings = get_settings()
-    fallback = OpenAILLMAdapter(
-        api_key=settings.openai_api_key,
-        model_name=settings.openai_model_name,
-    )
+    if settings.openai_api_key.strip():
+        fallback: LLMProvider = OpenAILLMAdapter(
+            api_key=settings.openai_api_key,
+            model_name=settings.openai_model_name,
+        )
+    else:
+        fallback = VertexLLMAdapter(
+            project_id=settings.gcp_project_id,
+            region=settings.gcp_region,
+            model_name=settings.vertex_fallback_model_name,
+            embedding_model_name=settings.vertex_embedding_model_name,
+        )
     return ResilientLLMAdapter(primary=primary, fallback=fallback)
 
 

@@ -76,6 +76,30 @@ def test_search_products_filters_by_query() -> None:
     assert fallback_sku == "3ALACWFC4JDLM6789"
 
 
+def test_search_products_matches_segment_tokens_like_torton() -> None:
+    csv_text = (
+        "VIN COMPLETO,VIN,Centro,UbicaciÃ³n FÃ­sica,Marca,Modelo,AÃ±o,Precio Sug. de Venta,"
+        "KilÃ³metros,Motor,TransmisiÃ³n,Color,Dormitorio,Paso,PromociÃ³n,Imagen Portada\n"
+        "3AKJGLD59ESF12345,ESF12345,QUERETARO,PATIO A,FREIGHTLINER,M2,2020,"
+        '"$1,200,000.00","450,000",Detroit DD15,DT12,Blanco,60,3.58,SIN PROMO,'
+        "https://img.example.com/m2.jpg\n"
+    )
+    adapter = SheetsInventoryAdapter(
+        csv_url="https://example.com/inventory.csv",
+        inventory_columns=InventoryColumnsConfig(),
+        fallback_products=_fallback_products(),
+        allow_fallback=True,
+        http_get=lambda _: csv_text,
+    )
+
+    matches = adapter.search_products("Que opciones de torton tienes?")
+
+    assert len(matches) == 1
+    metadata = matches[0].get("metadata")
+    assert isinstance(metadata, dict)
+    assert metadata.get("segment") == "torton"
+
+
 def test_fallback_to_yaml_when_no_url() -> None:
     adapter = SheetsInventoryAdapter(
         csv_url=None,
