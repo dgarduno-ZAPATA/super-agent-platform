@@ -63,6 +63,7 @@ class Settings(BaseSettings):
             "izT7R9N5kTtH83nRc7XNmMyeKijmPIdqjReOL09eKw/pub?output=csv"
         ),
         alias="INVENTORY_SHEET_URL",
+        validation_alias=AliasChoices("INVENTORY_SHEET_URL", "SHEET_CSV_URL"),
     )
     branch_cache_ttl_seconds: int = Field(default=600, alias="BRANCH_CACHE_TTL_SECONDS")
     inventory_cache_ttl_seconds: int = Field(default=300, alias="INVENTORY_CACHE_TTL_SECONDS")

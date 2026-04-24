@@ -24,6 +24,7 @@ from adapters.storage.repositories.outbound_queue_repo import PostgresOutboundQu
 from adapters.storage.repositories.session_repo import PostgresSessionRepository
 from adapters.storage.repositories.silenced_repo import PostgresSilencedUserRepository
 from core.auth.jwt_handler import verify_token
+from core.brand.loader import load_brand_config
 from core.brand.schema import Brand
 from core.config import get_settings
 from core.fsm.schema import FSMConfig
@@ -58,7 +59,10 @@ from core.services.skills import SkillRegistry
 
 
 def get_brand(request: Request) -> Brand:
-    return request.app.state.brand
+    brand = getattr(request.app.state, "brand", None)
+    if isinstance(brand, Brand):
+        return brand
+    return load_brand_config()
 
 
 def get_current_user(

@@ -10,7 +10,7 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
 
-from api.dependencies import get_current_user
+from api.dependencies import get_current_user, get_inventory_provider
 from api.middleware.correlation import CorrelationMiddleware
 from api.routers.admin_panel import router as admin_router
 from api.routers.auth import router as auth_router
@@ -23,6 +23,7 @@ from api.routers.webhook import router as webhook_router
 from core.brand.loader import BrandValidationError, load_brand_config
 from core.config import get_settings
 from core.observability.logging import setup_logging
+from core.ports.inventory_provider import InventoryProvider
 from infra.scheduler import start_campaign_scheduler, stop_campaign_scheduler
 
 SERVICE_NAME = "super-agent-platform"
@@ -134,9 +135,31 @@ def create_app() -> FastAPI:
     app.include_router(admin_router)
 
     @app.get("/health")
-    async def healthcheck() -> dict[str, str]:
-        logger.info("healthcheck_requested", service=SERVICE_NAME)
-        return {"status": "ok", "service": SERVICE_NAME}
+    async def healthcheck(
+        inventory_provider: Annotated[InventoryProvider, Depends(get_inventory_provider)],
+    ) -> dict[str, object]:
+        inventory_count = 0
+        try:
+            inventory_count = len(inventory_provider.get_products())
+        except Exception as exc:
+            logger.warning("healthcheck_inventory_count_failed", error=str(exc))
+
+        logger.info(
+            "healthcheck_requested",
+            service=SERVICE_NAME,
+            inventory_count=inventory_count,
+        )
+        logger.info(
+            f"✅ Inventario cargado: {inventory_count} items",
+            service=SERVICE_NAME,
+            inventory_count=inventory_count,
+            sheet_csv_url_set=bool(settings.inventory_sheet_url.strip()),
+        )
+        return {
+            "status": "ok",
+            "service": SERVICE_NAME,
+            "inventory_count": inventory_count,
+        }
 
     @app.get("/brand/info")
     async def brand_info() -> dict[str, str]:

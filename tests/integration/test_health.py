@@ -9,5 +9,9 @@ def test_healthcheck_returns_ok() -> None:
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "service": "super-agent-platform"}
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["service"] == "super-agent-platform"
+    assert isinstance(payload["inventory_count"], int)
+    assert payload["inventory_count"] >= 0
     assert response.headers["X-Request-ID"]
