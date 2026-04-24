@@ -59,6 +59,7 @@ jobs:
 
             if echo "${TERMINAL_FAILURE_STATES}" | grep -qw "${STATUS}"; then
               echo "Cloud Build failed with status: ${STATUS}"
+              gcloud builds describe "${BUILD_ID}" --format='yaml(status,statusDetail,failureInfo,steps,status)' || true
               gcloud builds describe "${BUILD_ID}" --format='value(logUrl)' || true
               exit 1
             fi
