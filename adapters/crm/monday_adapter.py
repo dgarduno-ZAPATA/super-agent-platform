@@ -33,6 +33,18 @@ STAGE_LABELS = {
     "closing": "Handoff Hecho",
 }
 
+STAGE_LABEL_ALIASES = {
+    "Nuevo lead": "Nuevo",
+    "Contactado": "Conversando",
+    "Perfilado": "Calificando",
+    "Cotizado": "Calificando",
+    "Seguimiento": "Conversando",
+    "Transferido a asesor": "Handoff Hecho",
+    "Venta cerrada": "Handoff Hecho",
+    "Cerrado perdido": "Handoff Hecho",
+    "Baja": "Handoff Hecho",
+}
+
 
 class MondayCRMAdapter(CRMProvider):
     def __init__(self, api_key: str, board_id: str) -> None:
@@ -105,7 +117,7 @@ class MondayCRMAdapter(CRMProvider):
                 COL_ULTIMO_CONTACTO: {"date": today},
             }
             if fsm_state:
-                column_values[COL_ETAPA_BOT] = {"label": STAGE_LABELS.get(fsm_state, fsm_state)}
+                column_values[COL_ETAPA_BOT] = {"label": self._resolve_stage_label(fsm_state)}
             col_vals = json.dumps(column_values)
 
             if existing_id:
@@ -156,7 +168,7 @@ class MondayCRMAdapter(CRMProvider):
     ) -> None:
         import json
 
-        label = STAGE_LABELS.get(new_stage, new_stage)
+        label = self._resolve_stage_label(new_stage)
         today = date.today().isoformat()
         monday_id: str | None = None
 
@@ -279,3 +291,10 @@ class MondayCRMAdapter(CRMProvider):
         if last_message:
             parts.append(f"Ultimo mensaje: {last_message}")
         return " | ".join(parts)
+
+    @staticmethod
+    def _resolve_stage_label(stage: str) -> str:
+        normalized = stage.strip()
+        if normalized in STAGE_LABELS:
+            return STAGE_LABELS[normalized]
+        return STAGE_LABEL_ALIASES.get(normalized, normalized)
