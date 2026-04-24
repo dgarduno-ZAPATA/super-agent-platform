@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -61,6 +62,23 @@ class SkillRegistry:
                 },
             ),
             ToolSchema(
+                name="send_inventory_photos",
+                description=(
+                    "Envia fotos reales de inventario al cliente por WhatsApp para una unidad "
+                    "especifica (marca/modelo/SKU)."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "product_name": {
+                            "type": "string",
+                            "description": "Nombre, modelo o SKU de la unidad para buscar fotos.",
+                        }
+                    },
+                    "required": ["product_name"],
+                },
+            ),
+            ToolSchema(
                 name="send_document",
                 description="Envia un documento al cliente por el canal de mensajeria.",
                 input_schema={
@@ -96,6 +114,14 @@ class SkillRegistry:
                 document_id = self._get_required_string(call.arguments, "document_id")
                 content = await self.send_document(
                     document_id=document_id,
+                    context=context,
+                )
+                return ToolResult(tool_call_id=call.id, name=call.name, content=content)
+
+            if call.name == "send_inventory_photos":
+                product_name = self._get_required_string(call.arguments, "product_name")
+                content = await self.send_inventory_photos(
+                    product_name=product_name,
                     context=context,
                 )
                 return ToolResult(tool_call_id=call.id, name=call.name, content=content)
@@ -174,16 +200,69 @@ class SkillRegistry:
             price = str(product.get("price", "No disponible"))
             availability = str(product.get("availability", "No disponible"))
             description = str(product.get("description", "Sin descripcion"))
+            media_urls = self._extract_media_urls(product)
+            photo_info = (
+                f"Fotos: {', '.join(media_urls[:2])}" if media_urls else "Fotos: No disponibles"
+            )
             lines.append(
                 f"{index}. {name} (SKU: {sku}) | "
                 f"Precio: {price} | Disponibilidad: {availability} | "
-                f"Descripcion: {description}"
+                f"Descripcion: {description} | {photo_info}"
             )
         if len(matches) > len(display_matches):
             lines.append(
                 f"Se muestran {len(display_matches)} de {len(matches)} resultados totales."
             )
         return "\n".join(lines)
+
+    async def send_inventory_photos(
+        self,
+        product_name: str,
+        context: SkillExecutionContext,
+        max_units: int = 2,
+        max_images_per_unit: int = 3,
+    ) -> str:
+        query = product_name.strip()
+        if not query:
+            return "Necesito el nombre o SKU de la unidad para enviarte fotos."
+
+        matches = self._inventory_provider.search_products(query)
+        if not matches:
+            logger.info("inventory_photos_not_found", query=query, phone=context.phone)
+            return f"No encontre unidades para '{query}'."
+
+        sent_images = 0
+        sent_units: list[str] = []
+        for product in matches[:max_units]:
+            product_name_text = str(product.get("name", "Unidad"))
+            media_urls = self._extract_media_urls(product)[:max_images_per_unit]
+            if not media_urls:
+                continue
+
+            sent_units.append(product_name_text)
+            for index, image_url in enumerate(media_urls):
+                caption = f"Fotos de {product_name_text}" if index == 0 else None
+                await self._messaging_provider.send_image(
+                    to=context.phone,
+                    image_url=image_url,
+                    caption=caption,
+                    correlation_id=context.correlation_id,
+                )
+                sent_images += 1
+
+        logger.info(
+            "inventory_photos_sent",
+            query=query,
+            phone=context.phone,
+            sent_images=sent_images,
+            sent_units=sent_units,
+        )
+        if sent_images == 0:
+            return (
+                f"Encontre unidades para '{query}', pero no tienen URLs de fotos disponibles "
+                "en inventario."
+            )
+        return f"Listo, te envie {sent_images} fotos de inventario."
 
     async def send_document(self, document_id: str, context: SkillExecutionContext) -> str:
         document_url = self._resolve_document_url(document_id)
@@ -221,3 +300,33 @@ class SkillRegistry:
         if normalized.startswith("http://") or normalized.startswith("https://"):
             return normalized
         return None
+
+    @staticmethod
+    def _extract_media_urls(product: dict[str, object]) -> list[str]:
+        urls: list[str] = []
+        metadata = product.get("metadata")
+        if isinstance(metadata, dict):
+            image_urls = metadata.get("image_urls")
+            if isinstance(image_urls, list):
+                for value in image_urls:
+                    if isinstance(value, str) and SkillRegistry._is_http_url(value):
+                        urls.append(value.strip())
+            image_url = metadata.get("image_url")
+            if isinstance(image_url, str) and SkillRegistry._is_http_url(image_url):
+                urls.append(image_url.strip())
+
+        media_urls = product.get("media_urls")
+        if isinstance(media_urls, list):
+            for value in media_urls:
+                if isinstance(value, str) and SkillRegistry._is_http_url(value):
+                    urls.append(value.strip())
+
+        deduped: list[str] = []
+        for url in urls:
+            if url not in deduped:
+                deduped.append(url)
+        return deduped
+
+    @staticmethod
+    def _is_http_url(value: str) -> bool:
+        return bool(re.match(r"^https?://", value.strip(), flags=re.IGNORECASE))

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
@@ -69,16 +70,17 @@ class ConversationAgent:
                     correlation_id=correlation_id,
                 ),
             )
+            response_text = self._compress_response_text(llm_response.content)
 
             delivery = await self._messaging_provider.send_text(
                 to=event.from_phone,
-                text=llm_response.content,
+                text=response_text,
                 correlation_id=correlation_id,
             )
             await self._persist_outbound_event(
                 conversation_id=conversation_id,
                 lead_id=session.lead_id,
-                text=llm_response.content,
+                text=response_text,
                 correlation_id=correlation_id,
                 provider_message_id=delivery.message_id,
                 state=session.current_state,
@@ -136,7 +138,10 @@ class ConversationAgent:
         return (
             f"{self._brand.prompt}\n\n"
             f"ESTADO ACTUAL: {current_state}. "
-            "Sigue estrictamente el objetivo de este estado segun tus instrucciones."
+            "Sigue estrictamente el objetivo de este estado segun tus instrucciones.\n"
+            "Estilo obligatorio de respuesta: maximo 3 a 4 oraciones cortas, directas y "
+            "conversacionales. No repitas especificaciones tecnicas que ya compartiste en "
+            "mensajes previos; si ya las mencionaste, da solo un resumen breve y el siguiente paso."
         )
 
     def _build_catalog_inventory_prompt_context(self, user_text: str | None) -> str:
@@ -155,7 +160,9 @@ class ConversationAgent:
             f"{inventory_snapshot}\n\n"
             "Regla estricta: solo puedes mencionar unidades que aparezcan en ese bloque. "
             "Si no hay resultados, responde que no hay disponibilidad en este momento y "
-            "ofrece validar con el equipo humano."
+            "ofrece validar con el equipo humano. "
+            "Si el cliente pide fotos o imagenes de una unidad, usa la herramienta "
+            "send_inventory_photos con el nombre o SKU de esa unidad."
         )
 
     def _trim_messages_for_budget(
@@ -266,6 +273,41 @@ class ConversationAgent:
         if configured:
             return configured[0]
         return "Disculpa, tengo un problema tecnico. Te escribo en breve."
+
+    def _compress_response_text(
+        self,
+        text: str,
+        max_sentences: int = 4,
+        max_chars: int = 700,
+    ) -> str:
+        normalized = " ".join((text or "").strip().split())
+        if not normalized:
+            return normalized
+
+        sentence_candidates = re.split(r"(?<=[.!?])\s+", normalized)
+        selected: list[str] = []
+        seen_keys: set[str] = set()
+        for sentence in sentence_candidates:
+            cleaned = sentence.strip()
+            if not cleaned:
+                continue
+            dedup_key = re.sub(r"\W+", "", cleaned.casefold())
+            if dedup_key and dedup_key in seen_keys:
+                continue
+            if dedup_key:
+                seen_keys.add(dedup_key)
+            selected.append(cleaned)
+            if len(selected) >= max_sentences:
+                break
+
+        result = " ".join(selected) if selected else normalized
+        if len(result) <= max_chars:
+            return result
+
+        clipped = result[:max_chars].rsplit(" ", maxsplit=1)[0].strip()
+        if clipped and clipped[-1] not in ".!?":
+            clipped = f"{clipped}."
+        return clipped or result[:max_chars]
 
     async def _run_tool_calling_loop(
         self,

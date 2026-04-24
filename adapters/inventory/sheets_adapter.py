@@ -156,6 +156,22 @@ class SheetsInventoryAdapter(InventoryProvider):
         km = self._normalize_km_value(
             self._safe_get_any(row, ["Kilómetros", "KilÃ³metros", self._inventory_columns.km])
         )
+        cover_image_url = self._safe_get_any(
+            row,
+            ["Imagen Portada", self._inventory_columns.image_url],
+        )
+        full_images_raw = self._safe_get_any(
+            row,
+            [
+                "Imagenes Completas",
+                "Imágenes Completas",
+                self._inventory_columns.image_urls,
+            ],
+        )
+        media_urls = self._collect_media_urls(
+            cover_image_url=cover_image_url,
+            full_images_raw=full_images_raw,
+        )
         km_value = str(km) if km is not None else "No disponible"
         description = (
             f"Motor: {engine or 'No disponible'} | "
@@ -187,7 +203,8 @@ class SheetsInventoryAdapter(InventoryProvider):
             "sleeper": self._safe_get(row, self._inventory_columns.sleeper),
             "paso": self._safe_get(row, self._inventory_columns.paso),
             "promotion": self._safe_get(row, self._inventory_columns.promotion),
-            "image_url": self._safe_get(row, self._inventory_columns.image_url),
+            "image_url": cover_image_url,
+            "image_urls": media_urls,
             "sku_full": self._safe_get(row, self._inventory_columns.sku_full),
         }
 
@@ -198,6 +215,7 @@ class SheetsInventoryAdapter(InventoryProvider):
             "price": price,
             "availability": "disponible",
             "category": category,
+            "media_urls": media_urls,
             "metadata": metadata,
         }
 
@@ -225,6 +243,30 @@ class SheetsInventoryAdapter(InventoryProvider):
             if value:
                 return value
         return ""
+
+    def _collect_media_urls(self, cover_image_url: str, full_images_raw: str) -> list[str]:
+        urls: list[str] = []
+        if cover_image_url and self._looks_like_http_url(cover_image_url):
+            urls.append(cover_image_url.strip())
+
+        for url in self._extract_http_urls(full_images_raw):
+            if url not in urls:
+                urls.append(url)
+
+        return urls
+
+    @staticmethod
+    def _extract_http_urls(raw: str) -> list[str]:
+        if not raw:
+            return []
+        # Accepts comma/pipe/newline separated URLs and keeps only http(s) links.
+        candidates = re.split(r"[\s,;|]+", raw.strip())
+        return [item for item in candidates if SheetsInventoryAdapter._looks_like_http_url(item)]
+
+    @staticmethod
+    def _looks_like_http_url(value: str) -> bool:
+        normalized = value.strip().lower()
+        return normalized.startswith("http://") or normalized.startswith("https://")
 
     def _build_searchable_text(self, item: dict[str, object]) -> str:
         metadata = item.get("metadata")

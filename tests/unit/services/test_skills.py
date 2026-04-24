@@ -43,6 +43,7 @@ class FakeKnowledgeProvider:
 class FakeMessagingProvider:
     def __init__(self) -> None:
         self.documents: list[dict[str, str]] = []
+        self.images: list[dict[str, str | None]] = []
 
     async def send_document(
         self, to: str, document_url: str, filename: str, correlation_id: str
@@ -72,11 +73,21 @@ class FakeMessagingProvider:
     async def send_image(
         self, to: str, image_url: str, caption: str | None, correlation_id: str
     ) -> MessageDeliveryReceipt:
-        del to
-        del image_url
-        del caption
-        del correlation_id
-        raise NotImplementedError
+        self.images.append(
+            {
+                "to": to,
+                "image_url": image_url,
+                "caption": caption,
+                "correlation_id": correlation_id,
+            }
+        )
+        return MessageDeliveryReceipt(
+            message_id="img-1",
+            provider="fake",
+            status="accepted",
+            correlation_id=correlation_id,
+            metadata={},
+        )
 
     async def send_audio(
         self, to: str, audio_url: str, correlation_id: str
@@ -105,6 +116,17 @@ class FakeInventoryProvider:
                 "price": "No disponible",
                 "availability": "No disponible",
                 "category": "tractocamion",
+                "media_urls": [
+                    "https://cdn.example.com/cascadia-portada.jpg",
+                    "https://cdn.example.com/cascadia-2.jpg",
+                ],
+                "metadata": {
+                    "image_url": "https://cdn.example.com/cascadia-portada.jpg",
+                    "image_urls": [
+                        "https://cdn.example.com/cascadia-portada.jpg",
+                        "https://cdn.example.com/cascadia-2.jpg",
+                    ],
+                },
             }
         ]
 
@@ -158,6 +180,7 @@ def test_query_inventory_formats_product_data() -> None:
     assert "Freightliner Cascadia 2020" in result
     assert "Precio:" in result
     assert "Disponibilidad:" in result
+    assert "Fotos:" in result
 
 
 @pytest.mark.asyncio
@@ -197,3 +220,23 @@ async def test_send_document_calls_messaging_provider_with_full_url() -> None:
     assert response == "Documento enviado con exito"
     assert len(messaging.documents) == 1
     assert messaging.documents[0]["to"] == "5214421234567"
+
+
+@pytest.mark.asyncio
+async def test_send_inventory_photos_uses_inventory_media_urls() -> None:
+    messaging = FakeMessagingProvider()
+    registry = SkillRegistry(
+        knowledge_provider=FakeKnowledgeProvider(),
+        inventory_provider=FakeInventoryProvider(),
+        messaging_provider=messaging,
+        brand=load_brand(Path("brand")),
+    )
+
+    response = await registry.send_inventory_photos(
+        product_name="Cascadia",
+        context=SkillExecutionContext(phone="5214421234567", correlation_id="corr-photos"),
+    )
+
+    assert response.startswith("Listo, te envie")
+    assert len(messaging.images) >= 1
+    assert messaging.images[0]["to"] == "5214421234567"

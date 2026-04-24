@@ -25,3 +25,4 @@ inventory_columns:
   paso: "Paso"
   promotion: "Promoción"
   image_url: "Imagen Portada"
+  image_urls: "Imagenes Completas"

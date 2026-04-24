@@ -398,6 +398,7 @@ def get_inbound_message_handler(
     branch_provider: Annotated[BranchProvider, Depends(get_branch_provider)],
     brand: Annotated[Brand, Depends(get_brand)],
 ) -> InboundMessageHandler:
+    settings = get_settings()
     return InboundMessageHandler(
         messaging_provider=messaging_provider,
         conversation_event_repository=conversation_event_repository,
@@ -412,4 +413,5 @@ def get_inbound_message_handler(
         fsm_config=fsm_config,
         branch_provider=branch_provider,
         brand=brand,
+        message_accumulation_seconds=settings.message_accumulation_seconds,
     )

@@ -32,6 +32,7 @@ class InventoryColumnsConfig(StrictConfigModel):
     paso: str = "Paso"
     promotion: str = "Promoción"
     image_url: str = "Imagen Portada"
+    image_urls: str = "Imagenes Completas"
 
 
 class BrandConfig(StrictConfigModel):

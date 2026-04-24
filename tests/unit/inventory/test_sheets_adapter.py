@@ -20,10 +20,11 @@ def _fallback_products() -> list[ProductConfig]:
 def test_parse_csv_maps_columns_correctly() -> None:
     csv_text = (
         "VIN COMPLETO,VIN,Centro,Ubicación Física,Marca,Modelo,Año,Precio Sug. de Venta,"
-        "Kilómetros,Motor,Transmisión,Color,Dormitorio,Paso,Promoción,Imagen Portada\n"
+        "Kilómetros,Motor,Transmisión,Color,Dormitorio,Paso,Promoción,"
+        "Imagen Portada,Imagenes Completas\n"
         "3AKJGLD59ESF12345,ESF12345,QUERETARO,PATIO A,Freightliner,Cascadia,2020,"
         '"$1,200,000.00","450,000",Detroit DD15,DT12,Blanco,60,3.58,SIN PROMO,'
-        "https://img.example.com/cascadia.jpg\n"
+        "https://img.example.com/cascadia.jpg,https://img.example.com/cascadia-2.jpg|https://img.example.com/cascadia-3.jpg\n"
     )
     adapter = SheetsInventoryAdapter(
         csv_url="https://example.com/inventory.csv",
@@ -47,6 +48,12 @@ def test_parse_csv_maps_columns_correctly() -> None:
     assert products[0]["sku"] == "ESF12345"
     assert products[0]["metadata"]["km"] == 450000
     assert products[0]["metadata"]["engine"] == "Detroit DD15"
+    assert products[0]["metadata"]["image_url"] == "https://img.example.com/cascadia.jpg"
+    assert products[0]["media_urls"] == [
+        "https://img.example.com/cascadia.jpg",
+        "https://img.example.com/cascadia-2.jpg",
+        "https://img.example.com/cascadia-3.jpg",
+    ]
 
 
 def test_search_products_filters_by_query() -> None:

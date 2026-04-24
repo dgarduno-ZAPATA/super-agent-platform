@@ -72,6 +72,7 @@ class Settings(BaseSettings):
     branch_cache_ttl_seconds: int = Field(default=600, alias="BRANCH_CACHE_TTL_SECONDS")
     inventory_cache_ttl_seconds: int = Field(default=300, alias="INVENTORY_CACHE_TTL_SECONDS")
     inventory_fallback_enabled: bool = Field(default=False, alias="INVENTORY_FALLBACK_ENABLED")
+    message_accumulation_seconds: float = Field(default=2.0, alias="MESSAGE_ACCUMULATION_SECONDS")
     campaign_batch_size: int = Field(default=10, alias="CAMPAIGN_BATCH_SIZE")
     campaign_rate_limit_ms: int = Field(default=300, alias="CAMPAIGN_RATE_LIMIT_MS")
     campaign_scheduler_interval_seconds: int = Field(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -68,6 +69,7 @@ class InboundMessageHandler:
         fsm_config: FSMConfig,
         branch_provider: BranchProvider,
         brand: Brand | None = None,
+        message_accumulation_seconds: float = 0.0,
     ) -> None:
         self._messaging_provider = messaging_provider
         self._conversation_event_repository = conversation_event_repository
@@ -82,6 +84,7 @@ class InboundMessageHandler:
         self._fsm_config = fsm_config
         self._branch_provider = branch_provider
         self._brand = brand
+        self._message_accumulation_seconds = max(0.0, float(message_accumulation_seconds))
         self._guard_registry = build_default_guard_registry()
         self._action_registry = build_default_action_registry(
             FSMActionDependencies(
@@ -139,6 +142,24 @@ class InboundMessageHandler:
             )
             return InboundHandleResult(
                 status="duplicate",
+                processed=False,
+                conversation_id=conversation_id,
+                event_type=enriched_inbound_event.event_type,
+                message_kind=enriched_inbound_event.kind,
+            )
+
+        if await self._should_defer_due_newer_inbound(
+            conversation_id=conversation_id,
+            current_message_id=enriched_inbound_event.message_id,
+        ):
+            logger.info(
+                "inbound_message_deferred_for_accumulation",
+                conversation_id=str(conversation_id),
+                message_id=enriched_inbound_event.message_id,
+                accumulation_seconds=self._message_accumulation_seconds,
+            )
+            return InboundHandleResult(
+                status="deferred_for_accumulation",
                 processed=False,
                 conversation_id=conversation_id,
                 event_type=enriched_inbound_event.event_type,
@@ -959,6 +980,34 @@ class InboundMessageHandler:
         if not normalized:
             return None
         return normalized
+
+    async def _should_defer_due_newer_inbound(
+        self,
+        conversation_id: UUID,
+        current_message_id: str,
+    ) -> bool:
+        if self._message_accumulation_seconds <= 0:
+            return False
+
+        await asyncio.sleep(self._message_accumulation_seconds)
+        events = await self._conversation_event_repository.list_by_conversation(
+            conversation_id=conversation_id,
+            limit=20,
+        )
+        latest_inbound = self._find_latest_inbound_message_id(events)
+        return latest_inbound is not None and latest_inbound != current_message_id
+
+    @staticmethod
+    def _find_latest_inbound_message_id(events: list[ConversationEvent]) -> str | None:
+        for event in reversed(events):
+            if event.event_type != "inbound_message":
+                continue
+            if event.message_id:
+                return event.message_id
+            message_id = event.payload.get("message_id")
+            if isinstance(message_id, str) and message_id.strip():
+                return message_id.strip()
+        return None
 
     @staticmethod
     def _build_conversation_id(phone: str) -> UUID:

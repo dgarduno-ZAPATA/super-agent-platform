@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import asyncio
+from datetime import UTC, datetime, timedelta
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 import pytest
@@ -67,6 +68,46 @@ class FakeMessagingProvider(MessagingProvider):
         if self._event is None:
             raise AssertionError("FakeMessagingProvider requires event or error")
         return self._event
+
+
+class SequencedMessagingProvider(MessagingProvider):
+    def __init__(self, events: list[InboundEvent]) -> None:
+        self._events = list(events)
+        self.sent_messages: list[dict[str, str]] = []
+
+    async def send_text(self, to: str, text: str, correlation_id: str) -> MessageDeliveryReceipt:
+        self.sent_messages.append({"to": to, "text": text, "correlation_id": correlation_id})
+        return MessageDeliveryReceipt(
+            message_id="out-seq-001",
+            provider="fake",
+            status="accepted",
+            correlation_id=correlation_id,
+            metadata={},
+        )
+
+    async def send_image(
+        self, to: str, image_url: str, caption: str | None, correlation_id: str
+    ) -> MessageDeliveryReceipt:
+        raise NotImplementedError
+
+    async def send_document(
+        self, to: str, document_url: str, filename: str, correlation_id: str
+    ) -> MessageDeliveryReceipt:
+        raise NotImplementedError
+
+    async def send_audio(
+        self, to: str, audio_url: str, correlation_id: str
+    ) -> MessageDeliveryReceipt:
+        raise NotImplementedError
+
+    async def mark_read(self, message_id: str) -> None:
+        raise NotImplementedError
+
+    def parse_inbound_event(self, raw_payload: dict[str, object]) -> InboundEvent:
+        del raw_payload
+        if not self._events:
+            raise AssertionError("No inbound events left in sequenced provider")
+        return self._events.pop(0)
 
 
 class FakeConversationEventRepository:
@@ -294,6 +335,26 @@ def _build_event(kind: MessageKind = MessageKind.TEXT, text: str = "Hola") -> In
     )
 
 
+def _build_event_with_id(message_id: str, text: str, seconds_offset: int = 0) -> InboundEvent:
+    timestamp = datetime.now(UTC)
+    if seconds_offset:
+        timestamp = timestamp + timedelta(seconds=seconds_offset)
+    return InboundEvent(
+        message_id=message_id,
+        from_phone="5214421234567",
+        kind=MessageKind.TEXT,
+        text=text,
+        media_url=None,
+        raw_metadata={"push_name": "Cliente Demo"},
+        received_at=timestamp,
+        sender_id="5214421234567@s.whatsapp.net",
+        channel="whatsapp",
+        event_type="inbound_message",
+        occurred_at=timestamp,
+        metadata={"source": "unit-test"},
+    )
+
+
 def _build_handler(
     messaging_provider: MessagingProvider,
     event_repo: FakeConversationEventRepository,
@@ -306,6 +367,7 @@ def _build_handler(
     image_analysis_service: FakeImageAnalysisService | None = None,
     orchestrator: FakeOrchestrator | None = None,
     branch_provider: FakeBranchProvider | None = None,
+    message_accumulation_seconds: float = 0.0,
 ) -> InboundMessageHandler:
     fsm_config = FSMConfig.model_validate(
         {
@@ -371,6 +433,7 @@ def _build_handler(
         orchestrator=orchestrator or FakeOrchestrator(),
         fsm_config=fsm_config,
         branch_provider=branch_provider or FakeBranchProvider(),
+        message_accumulation_seconds=message_accumulation_seconds,
     )
 
 
@@ -805,3 +868,41 @@ async def test_conversation_intent_passes_recent_dialog_history_to_agent() -> No
     assert history[-1].payload["text"] == "Busco un rabon"
     texts = [str(item.payload.get("text", "")) for item in history]
     assert "Para orientarte mejor, que tipo de camion buscas?" in texts
+
+
+@pytest.mark.asyncio
+async def test_accumulation_debounces_rapid_messages_and_responds_once() -> None:
+    event_repo = FakeConversationEventRepository()
+    lead_repo = FakeLeadProfileRepository()
+    crm_outbox_repo = FakeCRMOutboxRepository()
+    session_repo = FakeSessionRepository()
+    silenced_repo = FakeSilencedUserRepository()
+    transcription_provider = FakeTranscriptionProvider()
+    conversation_agent = FakeConversationAgent()
+    provider = SequencedMessagingProvider(
+        events=[
+            _build_event_with_id("wamid-rapid-1", "SI DEL 2"),
+            _build_event_with_id("wamid-rapid-2", "DONDE LO TIENES?"),
+        ]
+    )
+    handler = _build_handler(
+        messaging_provider=provider,
+        event_repo=event_repo,
+        lead_repo=lead_repo,
+        crm_outbox_repo=crm_outbox_repo,
+        session_repo=session_repo,
+        silenced_repo=silenced_repo,
+        transcription_provider=transcription_provider,
+        conversation_agent=conversation_agent,
+        message_accumulation_seconds=0.05,
+    )
+
+    first_task = asyncio.create_task(handler.handle({"idx": 1}))
+    await asyncio.sleep(0.01)
+    second_task = asyncio.create_task(handler.handle({"idx": 2}))
+    first = await first_task
+    second = await second_task
+
+    statuses = {first.status, second.status}
+    assert statuses == {"deferred_for_accumulation", "processed"}
+    assert len(conversation_agent.calls) == 1
