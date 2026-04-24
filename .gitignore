@@ -66,4 +66,7 @@ temp/
 .pyre/
 .ipynb_checkpoints/
 
+# uv (not used by this project, which uses Poetry)
+uv.lock
+
 .claude/
