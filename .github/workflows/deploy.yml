@@ -32,13 +32,41 @@ jobs:
         with:
           project_id: ${{ env.PROJECT_ID }}
 
-      - name: Configure Docker for GCR
-        run: gcloud auth configure-docker gcr.io --quiet
-
-      - name: Build and push Docker image
+      - name: Build and push image via Cloud Build
+        id: cloud_build
         run: |
-          docker build -t ${{ env.IMAGE }} .
-          docker push ${{ env.IMAGE }}
+          BUILD_ID=$(gcloud builds submit \
+            --tag "${{ env.IMAGE }}" \
+            --timeout=20m \
+            --async \
+            --format='value(id)')
+          echo "Build submitted: ${BUILD_ID}"
+          echo "build_id=${BUILD_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for Cloud Build to finish
+        run: |
+          BUILD_ID="${{ steps.cloud_build.outputs.build_id }}"
+          TERMINAL_FAILURE_STATES="FAILURE INTERNAL_ERROR TIMEOUT CANCELLED EXPIRED"
+
+          for _ in {1..120}; do
+            STATUS=$(gcloud builds describe "${BUILD_ID}" --format='value(status)')
+            echo "Cloud Build status: ${STATUS}"
+
+            if [ "${STATUS}" = "SUCCESS" ]; then
+              exit 0
+            fi
+
+            if echo "${TERMINAL_FAILURE_STATES}" | grep -qw "${STATUS}"; then
+              echo "Cloud Build failed with status: ${STATUS}"
+              gcloud builds describe "${BUILD_ID}" --format='value(logUrl)' || true
+              exit 1
+            fi
+
+            sleep 10
+          done
+
+          echo "Cloud Build did not complete within the expected timeout window."
+          exit 1
 
       - name: Deploy to Cloud Run
         run: |
