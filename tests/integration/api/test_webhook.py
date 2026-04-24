@@ -31,11 +31,13 @@ def _event_count_by_message_id(message_id: str) -> int:
     async def _query() -> int:
         async with session_scope() as session:
             result = await session.execute(
-                text("""
+                text(
+                    """
                     SELECT COUNT(*)
                     FROM conversation_events
                     WHERE payload ->> 'message_id' = :message_id
-                    """),
+                    """
+                ),
                 {"message_id": message_id},
             )
             return int(result.scalar_one())

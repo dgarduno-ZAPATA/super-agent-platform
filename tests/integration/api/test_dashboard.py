@@ -22,7 +22,8 @@ def _seed_dashboard_data() -> None:
 
         async with session_scope() as session:
             await session.execute(
-                text("""
+                text(
+                    """
                     INSERT INTO lead_profiles (
                         id, phone, name, source, metadata, created_at, updated_at
                     )
@@ -47,7 +48,8 @@ def _seed_dashboard_data() -> None:
                             :lead_5, '5214423000005', 'Lead 5', 'integration',
                             '{}'::jsonb, :now, :now
                         )
-                    """),
+                    """
+                ),
                 {
                     "lead_1": lead_1,
                     "lead_2": lead_2,
@@ -58,7 +60,8 @@ def _seed_dashboard_data() -> None:
                 },
             )
             await session.execute(
-                text("""
+                text(
+                    """
                     INSERT INTO sessions (
                         id, lead_id, current_state, context, created_at, updated_at
                     )
@@ -68,7 +71,8 @@ def _seed_dashboard_data() -> None:
                         (:session_3, :lead_3, 'idle', '{}'::jsonb, :now, :now),
                         (:session_4, :lead_4, 'closed', '{}'::jsonb, :now, :now),
                         (:session_5, :lead_5, 'qualification', '{}'::jsonb, :now, :now)
-                    """),
+                    """
+                ),
                 {
                     "session_1": uuid4(),
                     "session_2": uuid4(),
@@ -84,7 +88,8 @@ def _seed_dashboard_data() -> None:
                 },
             )
             await session.execute(
-                text("""
+                text(
+                    """
                     INSERT INTO outbound_queue
                         (
                             id, lead_id, campaign_id, priority, payload,
@@ -107,7 +112,8 @@ def _seed_dashboard_data() -> None:
                             :out_4, :lead_4, NULL, 1, '{"text":"p1 sent"}'::jsonb,
                             'sent', :now, 1
                         )
-                    """),
+                    """
+                ),
                 {
                     "out_1": uuid4(),
                     "out_2": uuid4(),
@@ -121,12 +127,14 @@ def _seed_dashboard_data() -> None:
                 },
             )
             await session.execute(
-                text("""
+                text(
+                    """
                     INSERT INTO crm_dlq (id, original_outbox_id, payload, error, moved_at)
                     VALUES
                         (:dlq_1, :outbox_1, '{}'::jsonb, 'error 1', :now),
                         (:dlq_2, :outbox_2, '{}'::jsonb, 'error 2', :now)
-                    """),
+                    """
+                ),
                 {
                     "dlq_1": uuid4(),
                     "dlq_2": uuid4(),
@@ -136,14 +144,16 @@ def _seed_dashboard_data() -> None:
                 },
             )
             await session.execute(
-                text("""
+                text(
+                    """
                     INSERT INTO conversation_events
                         (id, conversation_id, lead_id, event_type, payload, created_at)
                     VALUES
                         (:evt_1, :conv_1, :lead_1, 'inbound_message', '{}'::jsonb, :recent_now),
                         (:evt_2, :conv_2, :lead_2, 'inbound_message', '{}'::jsonb, :recent_old),
                         (:evt_3, :conv_3, :lead_3, 'inbound_message', '{}'::jsonb, :too_old)
-                    """),
+                    """
+                ),
                 {
                     "evt_1": uuid4(),
                     "evt_2": uuid4(),
