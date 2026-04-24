@@ -72,6 +72,7 @@ class CRMSyncWorker:
                 lead_id=self._to_str(payload.get("lead_id")),
                 new_stage=self._to_str(payload.get("new_stage")),
                 reason=self._to_optional_str(payload.get("reason")),
+                phone=self._to_optional_str(payload.get("phone")),
             )
             return
 

@@ -144,17 +144,16 @@ class InboundMessageHandler:
                 message_kind=enriched_inbound_event.kind,
             )
 
-        lead_profile, is_new_lead = await self._get_or_create_lead_profile(enriched_inbound_event)
-        if is_new_lead:
-            await self._crm_outbox_repository.enqueue_operation(
-                aggregate_id=str(lead_profile.id),
-                operation="upsert_lead",
-                payload={
-                    "phone": lead_profile.phone,
-                    "name": lead_profile.name,
-                    "source": lead_profile.source,
-                },
-            )
+        lead_profile, _ = await self._get_or_create_lead_profile(enriched_inbound_event)
+        await self._crm_outbox_repository.enqueue_operation(
+            aggregate_id=str(lead_profile.id),
+            operation="upsert_lead",
+            payload={
+                "phone": lead_profile.phone,
+                "name": lead_profile.name,
+                "source": lead_profile.source,
+            },
+        )
         session = await self._get_or_create_session(
             lead_profile.id, enriched_inbound_event.received_at
         )

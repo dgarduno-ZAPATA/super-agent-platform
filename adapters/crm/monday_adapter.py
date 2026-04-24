@@ -131,11 +131,33 @@ class MondayCRMAdapter(CRMProvider):
             )
             return ""
 
-    async def change_stage(self, lead_id: str, new_stage: str, reason: str | None = None) -> None:
+    async def change_stage(
+        self,
+        lead_id: str,
+        new_stage: str,
+        reason: str | None = None,
+        phone: str | None = None,
+    ) -> None:
         import json
 
         label = STAGE_LABELS.get(new_stage, new_stage)
         today = date.today().isoformat()
+        monday_id: str | None = None
+
+        if lead_id and str(lead_id).isdigit():
+            monday_id = str(lead_id)
+        elif phone:
+            monday_id = await self._find_item_by_phone(phone)
+
+        if not monday_id:
+            logger.warning(
+                "monday_change_stage_skipped_no_item",
+                lead_id=lead_id,
+                phone=phone,
+                new_stage=new_stage,
+            )
+            return
+
         try:
             q = """
             mutation($item: ID!, $board: ID!, $cols: JSON!) {
@@ -150,10 +172,24 @@ class MondayCRMAdapter(CRMProvider):
                     COL_ULTIMO_CONTACTO: {"date": today},
                 }
             )
-            await self._gql(q, {"item": lead_id, "board": str(self._board_id), "cols": col_vals})
-            logger.info("monday_stage_changed", lead_id=lead_id, new_stage=new_stage, label=label)
+            await self._gql(q, {"item": monday_id, "board": str(self._board_id), "cols": col_vals})
+            logger.info(
+                "monday_stage_changed",
+                lead_id=lead_id,
+                monday_id=monday_id,
+                phone=phone,
+                new_stage=new_stage,
+                label=label,
+            )
         except Exception as e:
-            logger.error("monday_api_error", method="change_stage", lead_id=lead_id, error=str(e))
+            logger.error(
+                "monday_api_error",
+                method="change_stage",
+                lead_id=lead_id,
+                monday_id=monday_id,
+                phone=phone,
+                error=str(e),
+            )
 
     async def add_note(self, lead_id: str, note: str, author: str) -> None:
         import json

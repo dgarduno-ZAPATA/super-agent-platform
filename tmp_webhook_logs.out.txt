@@ -1,0 +1,522 @@
+app-1  | {"reason": "invalid Evolution message payload: 1 validation error for EvolutionMessagePayload\nmessageType\n  Field required [type=missing, input_value={'key': {'remoteJid': '52...pushName': 'Debug User'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.13/v/missing", "event": "inbound_webhook_ignored_invalid_payload", "level": "info", "timestamp": "2026-04-23T23:24:49.884902Z", "request_id": "ac74c4a5-802f-4332-a9a3-d29f4df14644"}
+app-1  | {"correlation_id": "ac74c4a5-802f-4332-a9a3-d29f4df14644", "path": "/webhooks/whatsapp", "processing_status": "invalid_payload", "processed": false, "event": "whatsapp_webhook_received", "level": "info", "timestamp": "2026-04-23T23:24:49.885128Z", "request_id": "ac74c4a5-802f-4332-a9a3-d29f4df14644"}
+app-1  | INFO:     127.0.0.1:50014 - "POST /webhooks/whatsapp HTTP/1.1" 200 OK
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:25:22 UTC)" (scheduled at 2026-04-23 23:24:52.206202+00:00)
+app-1  | {"batch_size": 10, "items": 0, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:24:52.210132Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:25:22 UTC)" executed successfully
+app-1  | Running job "start_campaign_scheduler.<locals>._run_campaign_worker (trigger: interval[0:01:00], next run at: 2026-04-23 23:26:22 UTC)" (scheduled at 2026-04-23 23:25:22.205956+00:00)
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:25:52 UTC)" (scheduled at 2026-04-23 23:25:22.206202+00:00)
+app-1  | {"batch_size": 10, "items": 0, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:25:22.219093Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:25:52 UTC)" executed successfully
+app-1  | {"processed": 0, "succeeded": 0, "failed": 0, "duration_ms": 3, "event": "campaign_run_once_completed", "level": "info", "timestamp": "2026-04-23T23:25:22.231509Z", "request_id": "35f4ff29-8e9c-4930-98b8-1509c243131f"}
+app-1  | HTTP Request: POST http://super-agent-platform.local/api/v1/campaigns/run "HTTP/1.1 200 OK"
+app-1  | {"processed": 0, "succeeded": 0, "failed": 0, "duration_ms": 3, "event": "campaign_scheduler_run_completed", "level": "info", "timestamp": "2026-04-23T23:25:22.240848Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_campaign_worker (trigger: interval[0:01:00], next run at: 2026-04-23 23:26:22 UTC)" executed successfully
+app-1  | {"fsm_event": "user_message", "old_state": "idle", "new_state": "greeting", "guard": "is_not_silenced", "event": "fsm_transition_action", "level": "info", "timestamp": "2026-04-23T23:25:50.993299Z", "request_id": "6c727ae7-c028-441b-afd8-d829d08be3e4"}
+app-1  | {"lead_id": "4a780bb8-98b7-4f18-b895-aa581d5c0635", "stage": "Contactado", "event": "fsm_update_crm_stage_done", "level": "info", "timestamp": "2026-04-23T23:25:51.001459Z", "request_id": "6c727ae7-c028-441b-afd8-d829d08be3e4"}
+app-1  | {"session_id": "653ff9da-d72e-4eb6-babf-4b563e2a1d65", "new_state": "greeting", "event": "fsm_update_session_done", "level": "info", "timestamp": "2026-04-23T23:25:51.006621Z", "request_id": "6c727ae7-c028-441b-afd8-d829d08be3e4"}
+app-1  | {"session_id": "653ff9da-d72e-4eb6-babf-4b563e2a1d65", "lead_id": "4a780bb8-98b7-4f18-b895-aa581d5c0635", "intent": "conversation", "fsm_event": "user_message", "old_state": "idle", "new_state": "greeting", "transition_taken": true, "no_transition_matched": false, "tool_calls_made": [], "response_chars": null, "event": "fsm_event_processed", "level": "info", "timestamp": "2026-04-23T23:25:51.006779Z", "request_id": "6c727ae7-c028-441b-afd8-d829d08be3e4"}
+app-1  | {"error": "[Errno -2] Name or service not known", "event": "llm_primary_failed_using_fallback", "level": "warning", "timestamp": "2026-04-23T23:25:51.209945Z", "request_id": "6c727ae7-c028-441b-afd8-d829d08be3e4"}
+app-1  | {"error": "OpenAI fallback is not configured (OPENAI_API_KEY is empty)", "event": "llm_fallback_also_failed", "level": "error", "timestamp": "2026-04-23T23:25:51.328832Z", "request_id": "6c727ae7-c028-441b-afd8-d829d08be3e4"}
+app-1  | {"conversation_id": "82d71817-d4b5-5ebc-97ff-690053a78c71", "lead_id": "4a780bb8-98b7-4f18-b895-aa581d5c0635", "state": "greeting", "correlation_id": "TEST_DEBUG_002", "exc_info": true, "event": "conversation_agent_response_failed", "level": "error", "timestamp": "2026-04-23T23:25:51.417890Z", "request_id": "6c727ae7-c028-441b-afd8-d829d08be3e4"}
+app-1  | Traceback (most recent call last):
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 72, in map_httpcore_exceptions
+app-1  |     yield
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 377, in handle_async_request
+app-1  |     resp = await self._pool.handle_async_request(req)
+app-1  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_async/connection_pool.py", line 256, in handle_async_request
+app-1  |     raise exc from None
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_async/connection_pool.py", line 236, in handle_async_request
+app-1  |     response = await connection.handle_async_request(
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_async/connection.py", line 101, in handle_async_request
+app-1  |     raise exc
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_async/connection.py", line 78, in handle_async_request
+app-1  |     stream = await self._connect(request)
+app-1  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_async/connection.py", line 124, in _connect
+app-1  |     stream = await self._network_backend.connect_tcp(**kwargs)
+app-1  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_backends/auto.py", line 31, in connect_tcp
+app-1  |     return await self._backend.connect_tcp(
+app-1  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_backends/anyio.py", line 113, in connect_tcp
+app-1  |     with map_exceptions(exc_map):
+app-1  |   File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+app-1  |     self.gen.throw(typ, value, traceback)
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+app-1  |     raise to_exc(exc) from exc
+app-1  | httpcore.ConnectError: [Errno -2] Name or service not known
+app-1  | 
+app-1  | The above exception was the direct cause of the following exception:
+app-1  | 
+app-1  | Traceback (most recent call last):
+app-1  |   File "/app/adapters/llm/resilient_adapter.py", line 34, in complete
+app-1  |     return await asyncio.wait_for(
+app-1  |            ^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/asyncio/tasks.py", line 489, in wait_for
+app-1  |     return fut.result()
+app-1  |            ^^^^^^^^^^^^
+app-1  |   File "/app/adapters/llm/vertex_adapter.py", line 39, in complete
+app-1  |     access_token = await self._resolve_access_token()
+app-1  |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/app/adapters/llm/vertex_adapter.py", line 249, in _resolve_access_token
+app-1  |     response = await self._client.get(
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1814, in get
+app-1  |     return await self.request(
+app-1  |            ^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1585, in request
+app-1  |     return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+app-1  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/sentry_sdk/integrations/httpx.py", line 143, in send
+app-1  |     rv = await real_send(self, request, **kwargs)
+app-1  |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1674, in send
+app-1  |     response = await self._send_handling_auth(
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1702, in _send_handling_auth
+app-1  |     response = await self._send_handling_redirects(
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1739, in _send_handling_redirects
+app-1  |     response = await self._send_single_request(request)
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1776, in _send_single_request
+app-1  |     response = await transport.handle_async_request(request)
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 376, in handle_async_request
+app-1  |     with map_httpcore_exceptions():
+app-1  |   File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+app-1  |     self.gen.throw(typ, value, traceback)
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 89, in map_httpcore_exceptions
+app-1  |     raise mapped_exc(message) from exc
+app-1  | httpx.ConnectError: [Errno -2] Name or service not known
+app-1  | 
+app-1  | During handling of the above exception, another exception occurred:
+app-1  | 
+app-1  | Traceback (most recent call last):
+app-1  |   File "/app/core/services/conversation_agent.py", line 60, in respond
+app-1  |     llm_response = await self._run_tool_calling_loop(
+app-1  |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/app/core/services/conversation_agent.py", line 232, in _run_tool_calling_loop
+app-1  |     llm_response = await self._llm_provider.complete(
+app-1  |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/app/adapters/llm/resilient_adapter.py", line 47, in complete
+app-1  |     return await asyncio.wait_for(
+app-1  |            ^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/asyncio/tasks.py", line 489, in wait_for
+app-1  |     return fut.result()
+app-1  |            ^^^^^^^^^^^^
+app-1  |   File "/app/adapters/llm/openai_adapter.py", line 26, in complete
+app-1  |     raise RuntimeError("OpenAI fallback is not configured (OPENAI_API_KEY is empty)")
+app-1  | RuntimeError: OpenAI fallback is not configured (OPENAI_API_KEY is empty)
+app-1  | {"conversation_id": "82d71817-d4b5-5ebc-97ff-690053a78c71", "lead_id": "4a780bb8-98b7-4f18-b895-aa581d5c0635", "state": "greeting", "correlation_id": "TEST_DEBUG_002", "exc_info": true, "event": "conversation_agent_failure_fallback_send_failed", "level": "error", "timestamp": "2026-04-23T23:25:51.855889Z", "request_id": "6c727ae7-c028-441b-afd8-d829d08be3e4"}
+app-1  | Traceback (most recent call last):
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 72, in map_httpcore_exceptions
+app-1  |     yield
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 377, in handle_async_request
+app-1  |     resp = await self._pool.handle_async_request(req)
+app-1  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_async/connection_pool.py", line 256, in handle_async_request
+app-1  |     raise exc from None
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_async/connection_pool.py", line 236, in handle_async_request
+app-1  |     response = await connection.handle_async_request(
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_async/connection.py", line 101, in handle_async_request
+app-1  |     raise exc
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_async/connection.py", line 78, in handle_async_request
+app-1  |     stream = await self._connect(request)
+app-1  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_async/connection.py", line 124, in _connect
+app-1  |     stream = await self._network_backend.connect_tcp(**kwargs)
+app-1  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_backends/auto.py", line 31, in connect_tcp
+app-1  |     return await self._backend.connect_tcp(
+app-1  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_backends/anyio.py", line 113, in connect_tcp
+app-1  |     with map_exceptions(exc_map):
+app-1  |   File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+app-1  |     self.gen.throw(typ, value, traceback)
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+app-1  |     raise to_exc(exc) from exc
+app-1  | httpcore.ConnectError: [Errno -2] Name or service not known
+app-1  | 
+app-1  | The above exception was the direct cause of the following exception:
+app-1  | 
+app-1  | Traceback (most recent call last):
+app-1  |   File "/app/core/services/conversation_agent.py", line 101, in respond
+app-1  |     delivery = await self._messaging_provider.send_text(
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/sentry_sdk/integrations/httpx.py", line 143, in send
+app-1  |     rv = await real_send(self, request, **kwargs)
+app-1  |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1674, in send
+app-1  |     response = await self._send_handling_auth(
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1702, in _send_handling_auth
+app-1  |     response = await self._send_handling_redirects(
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1739, in _send_handling_redirects
+app-1  |     response = await self._send_single_request(request)
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1776, in _send_single_request
+app-1  |     response = await transport.handle_async_request(request)
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 376, in handle_async_request
+app-1  |     with map_httpcore_exceptions():
+app-1  |   File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+app-1  |     self.gen.throw(typ, value, traceback)
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 89, in map_httpcore_exceptions
+app-1  |     raise mapped_exc(message) from exc
+app-1  | httpx.ConnectError: [Errno -2] Name or service not known
+app-1  | {"conversation_id": "82d71817-d4b5-5ebc-97ff-690053a78c71", "lead_id": "4a780bb8-98b7-4f18-b895-aa581d5c0635", "event_type": "inbound_message", "message_kind": "text", "event": "inbound_webhook_processed", "level": "info", "timestamp": "2026-04-23T23:25:51.875790Z", "request_id": "6c727ae7-c028-441b-afd8-d829d08be3e4"}
+app-1  | {"correlation_id": "6c727ae7-c028-441b-afd8-d829d08be3e4", "path": "/webhooks/whatsapp", "processing_status": "processed", "processed": true, "event": "whatsapp_webhook_received", "level": "info", "timestamp": "2026-04-23T23:25:51.875960Z", "request_id": "6c727ae7-c028-441b-afd8-d829d08be3e4"}
+app-1  | INFO:     127.0.0.1:37420 - "POST /webhooks/whatsapp HTTP/1.1" 200 OK
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:26:22 UTC)" (scheduled at 2026-04-23 23:25:52.206202+00:00)
+app-1  | {"batch_size": 10, "items": 2, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:25:52.215550Z"}
+app-1  | HTTP Request: POST https://api.monday.com/v2 "HTTP/1.1 200 OK"
+app-1  | HTTP Request: POST https://api.monday.com/v2 "HTTP/1.1 200 OK"
+app-1  | {"item_id": "11835417935", "phone": "+52***4999", "action": "created", "event": "monday_lead_upserted", "level": "info", "timestamp": "2026-04-23T23:25:53.985669Z"}
+app-1  | {"item_id": "68331874-6c9e-4c40-adde-7fcfcf904861", "operation": "upsert_lead", "event": "crm_sync_item_done", "level": "info", "timestamp": "2026-04-23T23:25:53.994045Z"}
+app-1  | HTTP Request: POST https://api.monday.com/v2 "HTTP/1.1 200 OK"
+app-1  | {"method": "change_stage", "lead_id": "4a780bb8-98b7-4f18-b895-aa581d5c0635", "error": "Monday GraphQL error: Item not found", "event": "monday_api_error", "level": "error", "timestamp": "2026-04-23T23:25:54.322564Z"}
+app-1  | {"item_id": "365db610-50b1-447c-b5de-81c838e36f9d", "operation": "change_stage", "event": "crm_sync_item_done", "level": "info", "timestamp": "2026-04-23T23:25:54.332148Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:26:22 UTC)" executed successfully
+app-1  | Running job "start_campaign_scheduler.<locals>._run_campaign_worker (trigger: interval[0:01:00], next run at: 2026-04-23 23:27:22 UTC)" (scheduled at 2026-04-23 23:26:22.205956+00:00)
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:26:52 UTC)" (scheduled at 2026-04-23 23:26:22.206202+00:00)
+app-1  | {"batch_size": 10, "items": 0, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:26:22.216896Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:26:52 UTC)" executed successfully
+app-1  | {"processed": 0, "succeeded": 0, "failed": 0, "duration_ms": 4, "event": "campaign_run_once_completed", "level": "info", "timestamp": "2026-04-23T23:26:22.229678Z", "request_id": "2b3ee069-8ac0-46dc-b2d4-d03ff4f80979"}
+app-1  | HTTP Request: POST http://super-agent-platform.local/api/v1/campaigns/run "HTTP/1.1 200 OK"
+app-1  | {"processed": 0, "succeeded": 0, "failed": 0, "duration_ms": 4, "event": "campaign_scheduler_run_completed", "level": "info", "timestamp": "2026-04-23T23:26:22.242468Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_campaign_worker (trigger: interval[0:01:00], next run at: 2026-04-23 23:27:22 UTC)" executed successfully
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:27:22 UTC)" (scheduled at 2026-04-23 23:26:52.206202+00:00)
+app-1  | {"batch_size": 10, "items": 0, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:26:52.211945Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:27:22 UTC)" executed successfully
+app-1  | Running job "start_campaign_scheduler.<locals>._run_campaign_worker (trigger: interval[0:01:00], next run at: 2026-04-23 23:28:22 UTC)" (scheduled at 2026-04-23 23:27:22.205956+00:00)
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:27:52 UTC)" (scheduled at 2026-04-23 23:27:22.206202+00:00)
+app-1  | {"batch_size": 10, "items": 0, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:27:22.212337Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:27:52 UTC)" executed successfully
+app-1  | {"processed": 0, "succeeded": 0, "failed": 0, "duration_ms": 3, "event": "campaign_run_once_completed", "level": "info", "timestamp": "2026-04-23T23:27:22.222181Z", "request_id": "7a721c04-936b-4dca-8748-e99ac00a0739"}
+app-1  | HTTP Request: POST http://super-agent-platform.local/api/v1/campaigns/run "HTTP/1.1 200 OK"
+app-1  | {"processed": 0, "succeeded": 0, "failed": 0, "duration_ms": 3, "event": "campaign_scheduler_run_completed", "level": "info", "timestamp": "2026-04-23T23:27:22.229105Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_campaign_worker (trigger: interval[0:01:00], next run at: 2026-04-23 23:28:22 UTC)" executed successfully
+app-1  | WARNING:  WatchFiles detected changes in 'core/fsm/actions.py'. Reloading...
+app-1  | INFO:     Shutting down
+app-1  | INFO:     Waiting for application shutdown.
+app-1  | {"event": "campaign_scheduler_stopped", "level": "info", "timestamp": "2026-04-23T23:27:42.371112Z"}
+app-1  | {"service": "super-agent-platform", "event": "app_stopped", "level": "info", "timestamp": "2026-04-23T23:27:42.371229Z"}
+app-1  | Scheduler has been shut down
+app-1  | INFO:     Application shutdown complete.
+app-1  | INFO:     Finished server process [2486]
+app-1  | INFO:     Started server process [2905]
+app-1  | INFO:     Waiting for application startup.
+app-1  | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+app-1  | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+app-1  | Added job "start_campaign_scheduler.<locals>._run_campaign_worker" to job store "default"
+app-1  | Added job "start_campaign_scheduler.<locals>._run_crm_sync_worker" to job store "default"
+app-1  | Scheduler started
+app-1  | {"interval_seconds": 60, "event": "campaign_scheduler_started", "level": "info", "timestamp": "2026-04-23T23:27:48.447285Z"}
+app-1  | {"interval_seconds": 30, "job_id": "crm_sync_worker_job", "event": "crm_sync_worker_started", "level": "info", "timestamp": "2026-04-23T23:27:48.447406Z"}
+app-1  | {"service": "super-agent-platform", "app_env": "development", "brand_path": "brand", "brand_name": "Ra\u00fal Rodr\u00edguez", "fsm_states": 12, "fsm_initial_state": "idle", "event": "app_started", "level": "info", "timestamp": "2026-04-23T23:27:48.447492Z"}
+app-1  | INFO:     Application startup complete.
+app-1  | WARNING:  WatchFiles detected changes in 'core/services/crm_worker.py'. Reloading...
+app-1  | INFO:     Shutting down
+app-1  | INFO:     Waiting for application shutdown.
+app-1  | {"event": "campaign_scheduler_stopped", "level": "info", "timestamp": "2026-04-23T23:27:49.952867Z"}
+app-1  | {"service": "super-agent-platform", "event": "app_stopped", "level": "info", "timestamp": "2026-04-23T23:27:49.953048Z"}
+app-1  | Scheduler has been shut down
+app-1  | INFO:     Application shutdown complete.
+app-1  | INFO:     Finished server process [2905]
+app-1  | WARNING:  WatchFiles detected changes in 'core/ports/crm_provider.py'. Reloading...
+app-1  | INFO:     Started server process [2927]
+app-1  | INFO:     Waiting for application startup.
+app-1  | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+app-1  | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+app-1  | Added job "start_campaign_scheduler.<locals>._run_campaign_worker" to job store "default"
+app-1  | Added job "start_campaign_scheduler.<locals>._run_crm_sync_worker" to job store "default"
+app-1  | Scheduler started
+app-1  | {"interval_seconds": 60, "event": "campaign_scheduler_started", "level": "info", "timestamp": "2026-04-23T23:27:56.396287Z"}
+app-1  | {"interval_seconds": 30, "job_id": "crm_sync_worker_job", "event": "crm_sync_worker_started", "level": "info", "timestamp": "2026-04-23T23:27:56.396391Z"}
+app-1  | {"service": "super-agent-platform", "app_env": "development", "brand_path": "brand", "brand_name": "Ra\u00fal Rodr\u00edguez", "fsm_states": 12, "fsm_initial_state": "idle", "event": "app_started", "level": "info", "timestamp": "2026-04-23T23:27:56.396459Z"}
+app-1  | INFO:     Application startup complete.
+app-1  | INFO:     Started server process [2949]
+app-1  | INFO:     Waiting for application startup.
+app-1  | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+app-1  | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+app-1  | Added job "start_campaign_scheduler.<locals>._run_campaign_worker" to job store "default"
+app-1  | Added job "start_campaign_scheduler.<locals>._run_crm_sync_worker" to job store "default"
+app-1  | Scheduler started
+app-1  | {"interval_seconds": 60, "event": "campaign_scheduler_started", "level": "info", "timestamp": "2026-04-23T23:28:02.427619Z"}
+app-1  | {"interval_seconds": 30, "job_id": "crm_sync_worker_job", "event": "crm_sync_worker_started", "level": "info", "timestamp": "2026-04-23T23:28:02.427728Z"}
+app-1  | {"service": "super-agent-platform", "app_env": "development", "brand_path": "brand", "brand_name": "Ra\u00fal Rodr\u00edguez", "fsm_states": 12, "fsm_initial_state": "idle", "event": "app_started", "level": "info", "timestamp": "2026-04-23T23:28:02.427796Z"}
+app-1  | INFO:     Application startup complete.
+app-1  | WARNING:  WatchFiles detected changes in 'adapters/crm/monday_adapter.py'. Reloading...
+app-1  | INFO:     Shutting down
+app-1  | INFO:     Waiting for application shutdown.
+app-1  | {"event": "campaign_scheduler_stopped", "level": "info", "timestamp": "2026-04-23T23:28:04.735517Z"}
+app-1  | {"service": "super-agent-platform", "event": "app_stopped", "level": "info", "timestamp": "2026-04-23T23:28:04.735675Z"}
+app-1  | Scheduler has been shut down
+app-1  | INFO:     Application shutdown complete.
+app-1  | INFO:     Finished server process [2949]
+app-1  | INFO:     Started server process [2971]
+app-1  | INFO:     Waiting for application startup.
+app-1  | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+app-1  | Adding job tentatively -- it will be properly scheduled when the scheduler starts
+app-1  | Added job "start_campaign_scheduler.<locals>._run_campaign_worker" to job store "default"
+app-1  | Added job "start_campaign_scheduler.<locals>._run_crm_sync_worker" to job store "default"
+app-1  | Scheduler started
+app-1  | {"interval_seconds": 60, "event": "campaign_scheduler_started", "level": "info", "timestamp": "2026-04-23T23:28:11.406251Z"}
+app-1  | {"interval_seconds": 30, "job_id": "crm_sync_worker_job", "event": "crm_sync_worker_started", "level": "info", "timestamp": "2026-04-23T23:28:11.406607Z"}
+app-1  | {"service": "super-agent-platform", "app_env": "development", "brand_path": "brand", "brand_name": "Ra\u00fal Rodr\u00edguez", "fsm_states": 12, "fsm_initial_state": "idle", "event": "app_started", "level": "info", "timestamp": "2026-04-23T23:28:11.406736Z"}
+app-1  | INFO:     Application startup complete.
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:29:11 UTC)" (scheduled at 2026-04-23 23:28:41.402975+00:00)
+app-1  | {"batch_size": 10, "items": 0, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:28:41.459682Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:29:11 UTC)" executed successfully
+app-1  | Running job "start_campaign_scheduler.<locals>._run_campaign_worker (trigger: interval[0:01:00], next run at: 2026-04-23 23:30:11 UTC)" (scheduled at 2026-04-23 23:29:11.402718+00:00)
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:29:41 UTC)" (scheduled at 2026-04-23 23:29:11.402975+00:00)
+app-1  | {"batch_size": 10, "items": 0, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:29:11.435704Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:29:41 UTC)" executed successfully
+app-1  | {"processed": 0, "succeeded": 0, "failed": 0, "duration_ms": 5, "event": "campaign_run_once_completed", "level": "info", "timestamp": "2026-04-23T23:29:11.449293Z", "request_id": "90c0a21a-511e-4f5b-9225-df79bf517291"}
+app-1  | HTTP Request: POST http://super-agent-platform.local/api/v1/campaigns/run "HTTP/1.1 200 OK"
+app-1  | {"processed": 0, "succeeded": 0, "failed": 0, "duration_ms": 5, "event": "campaign_scheduler_run_completed", "level": "info", "timestamp": "2026-04-23T23:29:11.460221Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_campaign_worker (trigger: interval[0:01:00], next run at: 2026-04-23 23:30:11 UTC)" executed successfully
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:30:11 UTC)" (scheduled at 2026-04-23 23:29:41.402975+00:00)
+app-1  | {"batch_size": 10, "items": 0, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:29:41.407813Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:30:11 UTC)" executed successfully
+app-1  | {"fsm_event": "user_message", "old_state": "idle", "new_state": "greeting", "guard": "is_not_silenced", "event": "fsm_transition_action", "level": "info", "timestamp": "2026-04-23T23:29:41.460706Z", "request_id": "e8595af1-b53b-46f2-af3e-7a13a15bb258"}
+app-1  | {"lead_id": "ed00d3af-31b5-47e3-87fa-e7e5d72490e1", "stage": "Contactado", "event": "fsm_update_crm_stage_done", "level": "info", "timestamp": "2026-04-23T23:29:41.469992Z", "request_id": "e8595af1-b53b-46f2-af3e-7a13a15bb258"}
+app-1  | {"session_id": "ea5ae030-fb7c-4d97-a735-db678ad8601f", "new_state": "greeting", "event": "fsm_update_session_done", "level": "info", "timestamp": "2026-04-23T23:29:41.477934Z", "request_id": "e8595af1-b53b-46f2-af3e-7a13a15bb258"}
+app-1  | {"session_id": "ea5ae030-fb7c-4d97-a735-db678ad8601f", "lead_id": "ed00d3af-31b5-47e3-87fa-e7e5d72490e1", "intent": "conversation", "fsm_event": "user_message", "old_state": "idle", "new_state": "greeting", "transition_taken": true, "no_transition_matched": false, "tool_calls_made": [], "response_chars": null, "event": "fsm_event_processed", "level": "info", "timestamp": "2026-04-23T23:29:41.478198Z", "request_id": "e8595af1-b53b-46f2-af3e-7a13a15bb258"}
+app-1  | {"error": "[Errno -2] Name or service not known", "event": "llm_primary_failed_using_fallback", "level": "warning", "timestamp": "2026-04-23T23:29:41.679043Z", "request_id": "e8595af1-b53b-46f2-af3e-7a13a15bb258"}
+app-1  | {"error": "OpenAI fallback is not configured (OPENAI_API_KEY is empty)", "event": "llm_fallback_also_failed", "level": "error", "timestamp": "2026-04-23T23:29:41.705307Z", "request_id": "e8595af1-b53b-46f2-af3e-7a13a15bb258"}
+app-1  | {"conversation_id": "82d71817-d4b5-5ebc-97ff-690053a78c71", "lead_id": "ed00d3af-31b5-47e3-87fa-e7e5d72490e1", "state": "greeting", "correlation_id": "TEST_DEBUG_003", "exc_info": true, "event": "conversation_agent_response_failed", "level": "error", "timestamp": "2026-04-23T23:29:41.732806Z", "request_id": "e8595af1-b53b-46f2-af3e-7a13a15bb258"}
+app-1  | Traceback (most recent call last):
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 72, in map_httpcore_exceptions
+app-1  |     yield
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 377, in handle_async_request
+app-1  |     resp = await self._pool.handle_async_request(req)
+app-1  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_async/connection_pool.py", line 256, in handle_async_request
+app-1  |     raise exc from None
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_async/connection_pool.py", line 236, in handle_async_request
+app-1  |     response = await connection.handle_async_request(
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_async/connection.py", line 101, in handle_async_request
+app-1  |     raise exc
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_async/connection.py", line 78, in handle_async_request
+app-1  |     stream = await self._connect(request)
+app-1  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_async/connection.py", line 124, in _connect
+app-1  |     stream = await self._network_backend.connect_tcp(**kwargs)
+app-1  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_backends/auto.py", line 31, in connect_tcp
+app-1  |     return await self._backend.connect_tcp(
+app-1  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_backends/anyio.py", line 113, in connect_tcp
+app-1  |     with map_exceptions(exc_map):
+app-1  |   File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+app-1  |     self.gen.throw(typ, value, traceback)
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+app-1  |     raise to_exc(exc) from exc
+app-1  | httpcore.ConnectError: [Errno -2] Name or service not known
+app-1  | 
+app-1  | The above exception was the direct cause of the following exception:
+app-1  | 
+app-1  | Traceback (most recent call last):
+app-1  |   File "/app/adapters/llm/resilient_adapter.py", line 34, in complete
+app-1  |     return await asyncio.wait_for(
+app-1  |            ^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/asyncio/tasks.py", line 489, in wait_for
+app-1  |     return fut.result()
+app-1  |            ^^^^^^^^^^^^
+app-1  |   File "/app/adapters/llm/vertex_adapter.py", line 39, in complete
+app-1  |     access_token = await self._resolve_access_token()
+app-1  |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/app/adapters/llm/vertex_adapter.py", line 249, in _resolve_access_token
+app-1  |     response = await self._client.get(
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1814, in get
+app-1  |     return await self.request(
+app-1  |            ^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1585, in request
+app-1  |     return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+app-1  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/sentry_sdk/integrations/httpx.py", line 143, in send
+app-1  |     rv = await real_send(self, request, **kwargs)
+app-1  |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1674, in send
+app-1  |     response = await self._send_handling_auth(
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1702, in _send_handling_auth
+app-1  |     response = await self._send_handling_redirects(
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1739, in _send_handling_redirects
+app-1  |     response = await self._send_single_request(request)
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1776, in _send_single_request
+app-1  |     response = await transport.handle_async_request(request)
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 376, in handle_async_request
+app-1  |     with map_httpcore_exceptions():
+app-1  |   File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+app-1  |     self.gen.throw(typ, value, traceback)
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 89, in map_httpcore_exceptions
+app-1  |     raise mapped_exc(message) from exc
+app-1  | httpx.ConnectError: [Errno -2] Name or service not known
+app-1  | 
+app-1  | During handling of the above exception, another exception occurred:
+app-1  | 
+app-1  | Traceback (most recent call last):
+app-1  |   File "/app/core/services/conversation_agent.py", line 60, in respond
+app-1  |     llm_response = await self._run_tool_calling_loop(
+app-1  |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/app/core/services/conversation_agent.py", line 232, in _run_tool_calling_loop
+app-1  |     llm_response = await self._llm_provider.complete(
+app-1  |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/app/adapters/llm/resilient_adapter.py", line 47, in complete
+app-1  |     return await asyncio.wait_for(
+app-1  |            ^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/asyncio/tasks.py", line 489, in wait_for
+app-1  |     return fut.result()
+app-1  |            ^^^^^^^^^^^^
+app-1  |   File "/app/adapters/llm/openai_adapter.py", line 26, in complete
+app-1  |     raise RuntimeError("OpenAI fallback is not configured (OPENAI_API_KEY is empty)")
+app-1  | RuntimeError: OpenAI fallback is not configured (OPENAI_API_KEY is empty)
+app-1  | {"conversation_id": "82d71817-d4b5-5ebc-97ff-690053a78c71", "lead_id": "ed00d3af-31b5-47e3-87fa-e7e5d72490e1", "state": "greeting", "correlation_id": "TEST_DEBUG_003", "exc_info": true, "event": "conversation_agent_failure_fallback_send_failed", "level": "error", "timestamp": "2026-04-23T23:29:41.897060Z", "request_id": "e8595af1-b53b-46f2-af3e-7a13a15bb258"}
+app-1  | Traceback (most recent call last):
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 72, in map_httpcore_exceptions
+app-1  |     yield
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 377, in handle_async_request
+app-1  |     resp = await self._pool.handle_async_request(req)
+app-1  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_async/connection_pool.py", line 256, in handle_async_request
+app-1  |     raise exc from None
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_async/connection_pool.py", line 236, in handle_async_request
+app-1  |     response = await connection.handle_async_request(
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_async/connection.py", line 101, in handle_async_request
+app-1  |     raise exc
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_async/connection.py", line 78, in handle_async_request
+app-1  |     stream = await self._connect(request)
+app-1  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_async/connection.py", line 124, in _connect
+app-1  |     stream = await self._network_backend.connect_tcp(**kwargs)
+app-1  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_backends/auto.py", line 31, in connect_tcp
+app-1  |     return await self._backend.connect_tcp(
+app-1  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_backends/anyio.py", line 113, in connect_tcp
+app-1  |     with map_exceptions(exc_map):
+app-1  |   File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+app-1  |     self.gen.throw(typ, value, traceback)
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpcore/_exceptions.py", line 14, in map_exceptions
+app-1  |     raise to_exc(exc) from exc
+app-1  | httpcore.ConnectError: [Errno -2] Name or service not known
+app-1  | 
+app-1  | The above exception was the direct cause of the following exception:
+app-1  | 
+app-1  | Traceback (most recent call last):
+app-1  |   File "/app/core/services/conversation_agent.py", line 101, in respond
+app-1  |     delivery = await self._messaging_provider.send_text(
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/sentry_sdk/integrations/httpx.py", line 143, in send
+app-1  |     rv = await real_send(self, request, **kwargs)
+app-1  |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1674, in send
+app-1  |     response = await self._send_handling_auth(
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1702, in _send_handling_auth
+app-1  |     response = await self._send_handling_redirects(
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1739, in _send_handling_redirects
+app-1  |     response = await self._send_single_request(request)
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_client.py", line 1776, in _send_single_request
+app-1  |     response = await transport.handle_async_request(request)
+app-1  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 376, in handle_async_request
+app-1  |     with map_httpcore_exceptions():
+app-1  |   File "/usr/local/lib/python3.11/contextlib.py", line 158, in __exit__
+app-1  |     self.gen.throw(typ, value, traceback)
+app-1  |   File "/usr/local/lib/python3.11/site-packages/httpx/_transports/default.py", line 89, in map_httpcore_exceptions
+app-1  |     raise mapped_exc(message) from exc
+app-1  | httpx.ConnectError: [Errno -2] Name or service not known
+app-1  | {"conversation_id": "82d71817-d4b5-5ebc-97ff-690053a78c71", "lead_id": "ed00d3af-31b5-47e3-87fa-e7e5d72490e1", "event_type": "inbound_message", "message_kind": "text", "event": "inbound_webhook_processed", "level": "info", "timestamp": "2026-04-23T23:29:41.910342Z", "request_id": "e8595af1-b53b-46f2-af3e-7a13a15bb258"}
+app-1  | {"correlation_id": "e8595af1-b53b-46f2-af3e-7a13a15bb258", "path": "/webhooks/whatsapp", "processing_status": "processed", "processed": true, "event": "whatsapp_webhook_received", "level": "info", "timestamp": "2026-04-23T23:29:41.910546Z", "request_id": "e8595af1-b53b-46f2-af3e-7a13a15bb258"}
+app-1  | INFO:     127.0.0.1:52158 - "POST /webhooks/whatsapp HTTP/1.1" 200 OK
+app-1  | Running job "start_campaign_scheduler.<locals>._run_campaign_worker (trigger: interval[0:01:00], next run at: 2026-04-23 23:31:11 UTC)" (scheduled at 2026-04-23 23:30:11.402718+00:00)
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:30:41 UTC)" (scheduled at 2026-04-23 23:30:11.402975+00:00)
+app-1  | {"batch_size": 10, "items": 2, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:30:11.426575Z"}
+app-1  | {"processed": 0, "succeeded": 0, "failed": 0, "duration_ms": 34, "event": "campaign_run_once_completed", "level": "info", "timestamp": "2026-04-23T23:30:11.458736Z", "request_id": "456db47b-f689-4a12-a0c8-ae2425b45c66"}
+app-1  | HTTP Request: POST http://super-agent-platform.local/api/v1/campaigns/run "HTTP/1.1 200 OK"
+app-1  | {"processed": 0, "succeeded": 0, "failed": 0, "duration_ms": 34, "event": "campaign_scheduler_run_completed", "level": "info", "timestamp": "2026-04-23T23:30:11.466225Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_campaign_worker (trigger: interval[0:01:00], next run at: 2026-04-23 23:31:11 UTC)" executed successfully
+app-1  | HTTP Request: POST https://api.monday.com/v2 "HTTP/1.1 200 OK"
+app-1  | HTTP Request: POST https://api.monday.com/v2 "HTTP/1.1 200 OK"
+app-1  | {"item_id": "11835417935", "phone": "+52***4999", "action": "updated", "event": "monday_lead_upserted", "level": "info", "timestamp": "2026-04-23T23:30:12.705328Z"}
+app-1  | {"item_id": "5467f898-e858-447c-b512-98718eedfd55", "operation": "upsert_lead", "event": "crm_sync_item_done", "level": "info", "timestamp": "2026-04-23T23:30:12.713465Z"}
+app-1  | HTTP Request: POST https://api.monday.com/v2 "HTTP/1.1 200 OK"
+app-1  | HTTP Request: POST https://api.monday.com/v2 "HTTP/1.1 200 OK"
+app-1  | {"lead_id": "ed00d3af-31b5-47e3-87fa-e7e5d72490e1", "monday_id": "11835417935", "phone": "+52***4999", "new_stage": "greeting", "label": "Nuevo", "event": "monday_stage_changed", "level": "info", "timestamp": "2026-04-23T23:30:14.296873Z"}
+app-1  | {"item_id": "8d5b7957-fac1-4bd5-a4aa-dab15ce616a9", "operation": "change_stage", "event": "crm_sync_item_done", "level": "info", "timestamp": "2026-04-23T23:30:14.308145Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:30:41 UTC)" executed successfully
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:31:11 UTC)" (scheduled at 2026-04-23 23:30:41.402975+00:00)
+app-1  | {"batch_size": 10, "items": 0, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:30:41.411057Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:31:11 UTC)" executed successfully
+app-1  | Running job "start_campaign_scheduler.<locals>._run_campaign_worker (trigger: interval[0:01:00], next run at: 2026-04-23 23:32:11 UTC)" (scheduled at 2026-04-23 23:31:11.402718+00:00)
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:31:41 UTC)" (scheduled at 2026-04-23 23:31:11.402975+00:00)
+app-1  | {"batch_size": 10, "items": 0, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:31:11.412186Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:31:41 UTC)" executed successfully
+app-1  | {"processed": 0, "succeeded": 0, "failed": 0, "duration_ms": 3, "event": "campaign_run_once_completed", "level": "info", "timestamp": "2026-04-23T23:31:11.418595Z", "request_id": "33a5e604-06c5-4a16-80ee-681f6d713dcd"}
+app-1  | HTTP Request: POST http://super-agent-platform.local/api/v1/campaigns/run "HTTP/1.1 200 OK"
+app-1  | {"processed": 0, "succeeded": 0, "failed": 0, "duration_ms": 3, "event": "campaign_scheduler_run_completed", "level": "info", "timestamp": "2026-04-23T23:31:11.427792Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_campaign_worker (trigger: interval[0:01:00], next run at: 2026-04-23 23:32:11 UTC)" executed successfully
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:32:11 UTC)" (scheduled at 2026-04-23 23:31:41.402975+00:00)
+app-1  | {"batch_size": 10, "items": 0, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:31:41.409553Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:32:11 UTC)" executed successfully
+app-1  | Running job "start_campaign_scheduler.<locals>._run_campaign_worker (trigger: interval[0:01:00], next run at: 2026-04-23 23:33:11 UTC)" (scheduled at 2026-04-23 23:32:11.402718+00:00)
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:32:41 UTC)" (scheduled at 2026-04-23 23:32:11.402975+00:00)
+app-1  | {"batch_size": 10, "items": 0, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:32:11.409336Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:32:41 UTC)" executed successfully
+app-1  | {"processed": 0, "succeeded": 0, "failed": 0, "duration_ms": 2, "event": "campaign_run_once_completed", "level": "info", "timestamp": "2026-04-23T23:32:11.415744Z", "request_id": "54437692-8f0a-40a3-b9d1-c5f7f14cd5da"}
+app-1  | HTTP Request: POST http://super-agent-platform.local/api/v1/campaigns/run "HTTP/1.1 200 OK"
+app-1  | {"processed": 0, "succeeded": 0, "failed": 0, "duration_ms": 2, "event": "campaign_scheduler_run_completed", "level": "info", "timestamp": "2026-04-23T23:32:11.421898Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_campaign_worker (trigger: interval[0:01:00], next run at: 2026-04-23 23:33:11 UTC)" executed successfully
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:33:11 UTC)" (scheduled at 2026-04-23 23:32:41.402975+00:00)
+app-1  | {"batch_size": 10, "items": 0, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:32:41.407139Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:33:11 UTC)" executed successfully
+app-1  | Running job "start_campaign_scheduler.<locals>._run_campaign_worker (trigger: interval[0:01:00], next run at: 2026-04-23 23:34:11 UTC)" (scheduled at 2026-04-23 23:33:11.402718+00:00)
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:33:41 UTC)" (scheduled at 2026-04-23 23:33:11.402975+00:00)
+app-1  | {"batch_size": 10, "items": 0, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:33:11.414351Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:33:41 UTC)" executed successfully
+app-1  | {"processed": 0, "succeeded": 0, "failed": 0, "duration_ms": 3, "event": "campaign_run_once_completed", "level": "info", "timestamp": "2026-04-23T23:33:11.427255Z", "request_id": "71fbe2fa-91df-4a39-80be-b09204938d48"}
+app-1  | HTTP Request: POST http://super-agent-platform.local/api/v1/campaigns/run "HTTP/1.1 200 OK"
+app-1  | {"processed": 0, "succeeded": 0, "failed": 0, "duration_ms": 3, "event": "campaign_scheduler_run_completed", "level": "info", "timestamp": "2026-04-23T23:33:11.434844Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_campaign_worker (trigger: interval[0:01:00], next run at: 2026-04-23 23:34:11 UTC)" executed successfully
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:34:11 UTC)" (scheduled at 2026-04-23 23:33:41.402975+00:00)
+app-1  | {"batch_size": 10, "items": 0, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:33:41.411364Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:34:11 UTC)" executed successfully
+app-1  | Running job "start_campaign_scheduler.<locals>._run_campaign_worker (trigger: interval[0:01:00], next run at: 2026-04-23 23:35:11 UTC)" (scheduled at 2026-04-23 23:34:11.402718+00:00)
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:34:41 UTC)" (scheduled at 2026-04-23 23:34:11.402975+00:00)
+app-1  | {"batch_size": 10, "items": 0, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:34:11.410497Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:34:41 UTC)" executed successfully
+app-1  | {"processed": 0, "succeeded": 0, "failed": 0, "duration_ms": 3, "event": "campaign_run_once_completed", "level": "info", "timestamp": "2026-04-23T23:34:11.419393Z", "request_id": "02a995be-c146-46b7-8dc2-726696e13ff9"}
+app-1  | HTTP Request: POST http://super-agent-platform.local/api/v1/campaigns/run "HTTP/1.1 200 OK"
+app-1  | {"processed": 0, "succeeded": 0, "failed": 0, "duration_ms": 3, "event": "campaign_scheduler_run_completed", "level": "info", "timestamp": "2026-04-23T23:34:11.425566Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_campaign_worker (trigger: interval[0:01:00], next run at: 2026-04-23 23:35:11 UTC)" executed successfully
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:35:11 UTC)" (scheduled at 2026-04-23 23:34:41.402975+00:00)
+app-1  | {"batch_size": 10, "items": 0, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:34:41.410924Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:35:11 UTC)" executed successfully
+app-1  | Running job "start_campaign_scheduler.<locals>._run_campaign_worker (trigger: interval[0:01:00], next run at: 2026-04-23 23:36:11 UTC)" (scheduled at 2026-04-23 23:35:11.402718+00:00)
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:35:41 UTC)" (scheduled at 2026-04-23 23:35:11.402975+00:00)
+app-1  | {"batch_size": 10, "items": 0, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:35:11.413856Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:35:41 UTC)" executed successfully
+app-1  | {"processed": 0, "succeeded": 0, "failed": 0, "duration_ms": 3, "event": "campaign_run_once_completed", "level": "info", "timestamp": "2026-04-23T23:35:11.424020Z", "request_id": "e1f0934a-05ff-48c2-873c-16a341a93666"}
+app-1  | HTTP Request: POST http://super-agent-platform.local/api/v1/campaigns/run "HTTP/1.1 200 OK"
+app-1  | {"processed": 0, "succeeded": 0, "failed": 0, "duration_ms": 3, "event": "campaign_scheduler_run_completed", "level": "info", "timestamp": "2026-04-23T23:35:11.431887Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_campaign_worker (trigger: interval[0:01:00], next run at: 2026-04-23 23:36:11 UTC)" executed successfully
+app-1  | Running job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:36:11 UTC)" (scheduled at 2026-04-23 23:35:41.402975+00:00)
+app-1  | {"batch_size": 10, "items": 0, "event": "crm_sync_batch_loaded", "level": "info", "timestamp": "2026-04-23T23:35:41.409965Z"}
+app-1  | Job "start_campaign_scheduler.<locals>._run_crm_sync_worker (trigger: interval[0:00:30], next run at: 2026-04-23 23:36:11 UTC)" executed successfully

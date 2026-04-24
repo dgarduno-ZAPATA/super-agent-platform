@@ -742,7 +742,8 @@ async def test_handoff_active_session_persists_event_and_skips_bot_processing() 
     assert result.processed is True
     assert result.status == "handoff_active"
     assert len(event_repo.events) == 1
-    assert len(crm_outbox_repo.enqueued) == 0
+    assert len(crm_outbox_repo.enqueued) == 1
+    assert crm_outbox_repo.enqueued[0]["operation"] == "upsert_lead"
     assert orchestrator.calls == 0
     assert len(conversation_agent.calls) == 0
 

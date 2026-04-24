@@ -194,6 +194,34 @@ def build_default_action_registry(
 ) -> ActionRegistry:
     deps = dependencies or FSMActionDependencies()
 
+    async def log_transition_with_outbox_action(context: dict[str, object]) -> None:
+        logger.info(
+            "fsm_transition_action",
+            fsm_event=context.get("event"),
+            old_state=context.get("old_state"),
+            new_state=context.get("new_state"),
+            guard=context.get("guard"),
+        )
+
+        if deps.crm_outbox_repository is None:
+            return
+
+        lead_id = _coerce_str(context.get("lead_id"))
+        new_state = _coerce_str(context.get("new_state"))
+        if lead_id is None or new_state is None:
+            return
+        phone = _extract_nested_string(context, ["phone"])
+
+        await deps.crm_outbox_repository.enqueue_operation(
+            aggregate_id=lead_id,
+            operation="change_stage",
+            payload={
+                "lead_id": lead_id,
+                "phone": phone,
+                "new_stage": new_state,
+            },
+        )
+
     async def update_session_action(context: dict[str, object]) -> None:
         if deps.session_repository is None:
             logger.info("fsm_update_session_skipped", reason="missing_session_repository")
@@ -237,6 +265,7 @@ def build_default_action_registry(
             return
 
         aggregate_id = _coerce_str(context.get("lead_id")) or lead_id
+        phone = _extract_nested_string(context, ["phone"])
         old_state = _coerce_str(context.get("old_state")) or "unknown"
         new_state = _coerce_str(context.get("new_state")) or "unknown"
         await deps.crm_outbox_repository.enqueue_operation(
@@ -244,6 +273,7 @@ def build_default_action_registry(
             operation="change_stage",
             payload={
                 "lead_id": lead_id,
+                "phone": phone,
                 "new_stage": stage,
                 "reason": f"fsm:{old_state}->{new_state}",
             },
@@ -335,7 +365,7 @@ def build_default_action_registry(
             )
 
     return {
-        "log_transition": log_transition_action,
+        "log_transition": log_transition_with_outbox_action,
         "update_session": update_session_action,
         "update_crm_stage": update_crm_stage_action,
         "notify_agent": notify_agent_action,
