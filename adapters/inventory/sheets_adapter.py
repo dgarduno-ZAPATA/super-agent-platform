@@ -259,9 +259,14 @@ class SheetsInventoryAdapter(InventoryProvider):
     def _extract_http_urls(raw: str) -> list[str]:
         if not raw:
             return []
-        # Accepts comma/pipe/newline separated URLs and keeps only http(s) links.
-        candidates = re.split(r"[\s,;|]+", raw.strip())
-        return [item for item in candidates if SheetsInventoryAdapter._looks_like_http_url(item)]
+        # Extract all http(s) URLs even when separated by spaces, commas, or new lines.
+        raw_matches = re.findall(r"https?://[^\s,|;]+", raw, flags=re.IGNORECASE)
+        urls: list[str] = []
+        for candidate in raw_matches:
+            cleaned = candidate.strip().rstrip(".,;|)]}>")
+            if cleaned and SheetsInventoryAdapter._looks_like_http_url(cleaned):
+                urls.append(cleaned)
+        return urls
 
     @staticmethod
     def _looks_like_http_url(value: str) -> bool:

@@ -22,6 +22,8 @@ class SkillExecutionContext:
 
 
 class SkillRegistry:
+    _photo_cursor_by_phone: dict[str, dict[str, object]] = {}
+
     def __init__(
         self,
         knowledge_provider: KnowledgeProvider,
@@ -219,43 +221,64 @@ class SkillRegistry:
         self,
         product_name: str,
         context: SkillExecutionContext,
-        max_units: int = 2,
-        max_images_per_unit: int = 3,
+        max_images_per_message: int = 5,
     ) -> str:
         query = product_name.strip()
         if not query:
             return "Necesito el nombre o SKU de la unidad para enviarte fotos."
+
+        if self._is_follow_up_photo_query(query):
+            follow_up_response = await self._send_follow_up_photos(
+                phone=context.phone,
+                correlation_id=context.correlation_id,
+                max_images=max_images_per_message,
+            )
+            if follow_up_response is not None:
+                return follow_up_response
 
         matches = self._inventory_provider.search_products(query)
         if not matches:
             logger.info("inventory_photos_not_found", query=query, phone=context.phone)
             return f"No encontre unidades para '{query}'."
 
-        sent_images = 0
-        sent_units: list[str] = []
-        for product in matches[:max_units]:
-            product_name_text = str(product.get("name", "Unidad"))
-            media_urls = self._extract_media_urls(product)[:max_images_per_unit]
-            if not media_urls:
-                continue
+        selected_product: dict[str, object] | None = None
+        selected_media_urls: list[str] = []
+        for product in matches:
+            media_urls = self._extract_media_urls(product)
+            if media_urls:
+                selected_product = product
+                selected_media_urls = media_urls
+                break
 
-            sent_units.append(product_name_text)
-            for index, image_url in enumerate(media_urls):
-                caption = f"Fotos de {product_name_text}" if index == 0 else None
-                await self._messaging_provider.send_image(
-                    to=context.phone,
-                    image_url=image_url,
-                    caption=caption,
-                    correlation_id=context.correlation_id,
-                )
-                sent_images += 1
+        if selected_product is None:
+            return (
+                f"Encontre unidades para '{query}', pero no tienen URLs de fotos disponibles "
+                "en inventario."
+            )
+
+        product_name_text = str(selected_product.get("name", "Unidad"))
+        sent_images = await self._send_image_batch(
+            phone=context.phone,
+            correlation_id=context.correlation_id,
+            unit_name=product_name_text,
+            urls=selected_media_urls,
+            start_index=0,
+            max_images=max_images_per_message,
+        )
+
+        self._photo_cursor_by_phone[context.phone] = {
+            "unit_name": product_name_text,
+            "urls": selected_media_urls,
+            "next_index": sent_images,
+        }
 
         logger.info(
             "inventory_photos_sent",
             query=query,
             phone=context.phone,
             sent_images=sent_images,
-            sent_units=sent_units,
+            sent_units=[product_name_text],
+            total_available=len(selected_media_urls),
         )
         if sent_images == 0:
             return (
@@ -330,3 +353,96 @@ class SkillRegistry:
     @staticmethod
     def _is_http_url(value: str) -> bool:
         return bool(re.match(r"^https?://", value.strip(), flags=re.IGNORECASE))
+
+    async def _send_follow_up_photos(
+        self,
+        phone: str,
+        correlation_id: str,
+        max_images: int,
+    ) -> str | None:
+        cursor = self._photo_cursor_by_phone.get(phone)
+        if not isinstance(cursor, dict):
+            return None
+
+        urls_raw = cursor.get("urls")
+        unit_name_raw = cursor.get("unit_name")
+        next_index_raw = cursor.get("next_index")
+        if not isinstance(urls_raw, list) or not isinstance(unit_name_raw, str):
+            return None
+        urls = [value for value in urls_raw if isinstance(value, str) and self._is_http_url(value)]
+        if not urls:
+            return None
+        next_index = int(next_index_raw) if isinstance(next_index_raw, int) else 0
+
+        if next_index >= len(urls):
+            return "Ya te comparti todas las fotos disponibles de esa unidad."
+
+        sent_images = await self._send_image_batch(
+            phone=phone,
+            correlation_id=correlation_id,
+            unit_name=unit_name_raw,
+            urls=urls,
+            start_index=next_index,
+            max_images=max_images,
+        )
+        self._photo_cursor_by_phone[phone] = {
+            "unit_name": unit_name_raw,
+            "urls": urls,
+            "next_index": next_index + sent_images,
+        }
+        if sent_images == 0:
+            return "No pude enviar mas fotos en este momento."
+        return f"Listo, te envie {sent_images} fotos adicionales."
+
+    async def _send_image_batch(
+        self,
+        phone: str,
+        correlation_id: str,
+        unit_name: str,
+        urls: list[str],
+        start_index: int,
+        max_images: int,
+    ) -> int:
+        sent_images = 0
+        slice_end = min(len(urls), max(0, start_index) + max(1, max_images))
+        for index in range(start_index, slice_end):
+            image_url = urls[index]
+            caption = f"Fotos de {unit_name}" if sent_images == 0 else None
+            await self._messaging_provider.send_image(
+                to=phone,
+                image_url=image_url,
+                caption=caption,
+                correlation_id=correlation_id,
+            )
+            sent_images += 1
+        return sent_images
+
+    @staticmethod
+    def _is_follow_up_photo_query(query: str) -> bool:
+        normalized = query.strip().lower()
+        if not normalized:
+            return False
+
+        direct_phrases = {
+            "fotos",
+            "foto",
+            "mas fotos",
+            "más fotos",
+            "tienes fotos",
+            "tienes imagenes",
+            "tienes imágenes",
+            "manda fotos",
+            "mandame fotos",
+            "mándame fotos",
+        }
+        if normalized in direct_phrases:
+            return True
+
+        tokens = re.findall(r"[a-z0-9áéíóúñ]+", normalized, flags=re.IGNORECASE)
+        has_photo_word = any(
+            token in {"foto", "fotos", "imagen", "imagenes", "imágenes"} for token in tokens
+        )
+        has_follow_word = any(
+            token in {"mas", "más", "manda", "mandame", "mándame", "tienes"} for token in tokens
+        )
+        return has_photo_word and has_follow_word and len(tokens) <= 5

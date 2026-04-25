@@ -58,6 +58,15 @@ class ConversationAgent:
                 messages = [self._build_user_message(event)]
             messages = self._trim_messages_for_budget(messages, max_total_chars=4000)
 
+            if self._is_photo_only_request(event.text):
+                await self._handle_photo_only_request(
+                    event=event,
+                    session=session,
+                    conversation_id=conversation_id,
+                    correlation_id=correlation_id,
+                )
+                return
+
             system_prompt = self._build_system_prompt(session.current_state)
             if session.current_state == "catalog_navigation":
                 inventory_context = self._build_catalog_inventory_prompt_context(event.text)
@@ -70,7 +79,11 @@ class ConversationAgent:
                     correlation_id=correlation_id,
                 ),
             )
-            response_text = self._compress_response_text(llm_response.content)
+            response_text = self._compress_response_text(
+                llm_response.content,
+                inbound_text=event.text,
+                history=history,
+            )
 
             delivery = await self._messaging_provider.send_text(
                 to=event.from_phone,
@@ -162,7 +175,8 @@ class ConversationAgent:
             "Si no hay resultados, responde que no hay disponibilidad en este momento y "
             "ofrece validar con el equipo humano. "
             "Si el cliente pide fotos o imagenes de una unidad, usa la herramienta "
-            "send_inventory_photos con el nombre o SKU de esa unidad."
+            "send_inventory_photos con el nombre o SKU de esa unidad. "
+            "Nunca digas que no puedes mandar fotos: si hay URLs en inventario, debes enviarlas."
         )
 
     def _trim_messages_for_budget(
@@ -277,19 +291,31 @@ class ConversationAgent:
     def _compress_response_text(
         self,
         text: str,
-        max_sentences: int = 4,
+        inbound_text: str | None,
+        history: list[ConversationEvent] | None,
+        max_sentences: int = 3,
         max_chars: int = 700,
     ) -> str:
         normalized = " ".join((text or "").strip().split())
         if not normalized:
             return normalized
 
+        if self._is_photo_only_request(inbound_text):
+            max_sentences = 1
+            max_chars = 220
+        elif self._is_photo_request(inbound_text):
+            max_sentences = min(max_sentences, 2)
+            max_chars = min(max_chars, 320)
+
         sentence_candidates = re.split(r"(?<=[.!?])\s+", normalized)
         selected: list[str] = []
         seen_keys: set[str] = set()
+        history_has_specs = self._history_has_technical_specs(history)
         for sentence in sentence_candidates:
             cleaned = sentence.strip()
             if not cleaned:
+                continue
+            if history_has_specs and self._looks_like_spec_sentence(cleaned):
                 continue
             dedup_key = re.sub(r"\W+", "", cleaned.casefold())
             if dedup_key and dedup_key in seen_keys:
@@ -308,6 +334,91 @@ class ConversationAgent:
         if clipped and clipped[-1] not in ".!?":
             clipped = f"{clipped}."
         return clipped or result[:max_chars]
+
+    async def _handle_photo_only_request(
+        self,
+        event: InboundEvent,
+        session: Session,
+        conversation_id: UUID,
+        correlation_id: str,
+    ) -> None:
+        photos_result = await self._skill_registry.send_inventory_photos(
+            product_name=(event.text or "").strip(),
+            context=SkillExecutionContext(
+                phone=event.from_phone,
+                correlation_id=correlation_id,
+            ),
+        )
+        short_response = self._build_photo_ack_text(photos_result)
+        delivery = await self._messaging_provider.send_text(
+            to=event.from_phone,
+            text=short_response,
+            correlation_id=correlation_id,
+        )
+        await self._persist_outbound_event(
+            conversation_id=conversation_id,
+            lead_id=session.lead_id,
+            text=short_response,
+            correlation_id=correlation_id,
+            provider_message_id=delivery.message_id,
+            state=session.current_state,
+            llm_metadata={
+                "response_mode": "photo_only_direct",
+                "photos_result": photos_result,
+            },
+        )
+
+    @staticmethod
+    def _build_photo_ack_text(photos_result: str) -> str:
+        normalized = photos_result.strip()
+        if normalized.lower().startswith("listo, te envie"):
+            return "Listo, ya te mande las fotos."
+        return normalized
+
+    @staticmethod
+    def _is_photo_request(text: str | None) -> bool:
+        normalized = (text or "").strip().lower()
+        if not normalized:
+            return False
+        return "foto" in normalized or "imagen" in normalized
+
+    @staticmethod
+    def _is_photo_only_request(text: str | None) -> bool:
+        normalized = (text or "").strip().lower()
+        if not normalized:
+            return False
+        tokens = re.findall(r"[a-z0-9áéíóúñ]+", normalized, flags=re.IGNORECASE)
+        if not tokens:
+            return False
+        photo_tokens = {"foto", "fotos", "imagen", "imagenes", "imágenes"}
+        if not any(token in photo_tokens for token in tokens):
+            return False
+        return len(tokens) <= 5
+
+    @staticmethod
+    def _history_has_technical_specs(history: list[ConversationEvent] | None) -> bool:
+        if not history:
+            return False
+        for item in history:
+            if item.event_type != "outbound_message":
+                continue
+            payload_text = item.payload.get("text")
+            if not isinstance(payload_text, str):
+                continue
+            lowered = payload_text.casefold()
+            if "motor:" in lowered or "trans:" in lowered or "km:" in lowered:
+                return True
+        return False
+
+    @staticmethod
+    def _looks_like_spec_sentence(text: str) -> bool:
+        lowered = text.casefold()
+        keyword_hits = sum(
+            1
+            for token in ("motor", "transmision", "transmisión", "km", "kilomet")
+            if token in lowered
+        )
+        return keyword_hits >= 2
 
     async def _run_tool_calling_loop(
         self,

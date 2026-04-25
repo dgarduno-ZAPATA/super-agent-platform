@@ -126,6 +126,34 @@ def test_price_uses_precio_sugerido_de_venta_column() -> None:
     assert products[0]["price"] == "1980000.00"
 
 
+def test_parse_imagenes_completas_with_spaces_newlines_and_commas() -> None:
+    csv_text = (
+        "VIN COMPLETO,VIN,Centro,Ubicación Física,Marca,Modelo,Año,Precio Sug. de Venta,"
+        "Kilómetros,Motor,Transmisión,Color,Dormitorio,Paso,Promoción,"
+        "Imagen Portada,Imagenes Completas\n"
+        "3ALACWFC4JDLM6789,,LEON,PATIO B,KENWORTH,T 680,2021,1980000,320000,Cummins X15,"
+        "Eaton Fuller,Rojo,52,3.70,PROMO,https://img.example.com/cover.jpg,"
+        '"https://img.example.com/a.jpg https://img.example.com/b.jpg,\nhttps://img.example.com/c.jpg"\n'
+    )
+    adapter = SheetsInventoryAdapter(
+        csv_url="https://example.com/inventory.csv",
+        inventory_columns=InventoryColumnsConfig(),
+        fallback_products=_fallback_products(),
+        allow_fallback=True,
+        http_get=lambda _: csv_text,
+    )
+
+    products = adapter.get_products()
+
+    assert len(products) == 1
+    assert products[0]["media_urls"] == [
+        "https://img.example.com/cover.jpg",
+        "https://img.example.com/a.jpg",
+        "https://img.example.com/b.jpg",
+        "https://img.example.com/c.jpg",
+    ]
+
+
 def test_fallback_to_yaml_when_no_url() -> None:
     adapter = SheetsInventoryAdapter(
         csv_url=None,

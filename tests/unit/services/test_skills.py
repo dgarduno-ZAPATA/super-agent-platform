@@ -224,6 +224,7 @@ async def test_send_document_calls_messaging_provider_with_full_url() -> None:
 
 @pytest.mark.asyncio
 async def test_send_inventory_photos_uses_inventory_media_urls() -> None:
+    SkillRegistry._photo_cursor_by_phone.clear()
     messaging = FakeMessagingProvider()
     registry = SkillRegistry(
         knowledge_provider=FakeKnowledgeProvider(),
@@ -240,3 +241,43 @@ async def test_send_inventory_photos_uses_inventory_media_urls() -> None:
     assert response.startswith("Listo, te envie")
     assert len(messaging.images) >= 1
     assert messaging.images[0]["to"] == "5214421234567"
+
+
+@pytest.mark.asyncio
+async def test_send_inventory_photos_sends_follow_up_batch_up_to_five() -> None:
+    SkillRegistry._photo_cursor_by_phone.clear()
+
+    class ManyPhotosInventoryProvider(FakeInventoryProvider):
+        def get_products(self) -> list[dict[str, object]]:
+            urls = [f"https://cdn.example.com/cascadia-{i}.jpg" for i in range(1, 8)]
+            return [
+                {
+                    "sku": "FL-CASCADIA-2020",
+                    "name": "Freightliner Cascadia 2020",
+                    "description": "Unidad demo",
+                    "price": "No disponible",
+                    "availability": "No disponible",
+                    "category": "tractocamion",
+                    "media_urls": urls,
+                    "metadata": {
+                        "image_url": urls[0],
+                        "image_urls": urls,
+                    },
+                }
+            ]
+
+    messaging = FakeMessagingProvider()
+    registry = SkillRegistry(
+        knowledge_provider=FakeKnowledgeProvider(),
+        inventory_provider=ManyPhotosInventoryProvider(),
+        messaging_provider=messaging,
+        brand=load_brand(Path("brand")),
+    )
+    context = SkillExecutionContext(phone="5214421234567", correlation_id="corr-batch")
+
+    first = await registry.send_inventory_photos("Cascadia", context)
+    second = await registry.send_inventory_photos("MAS FOTOS?", context)
+
+    assert first == "Listo, te envie 5 fotos de inventario."
+    assert second == "Listo, te envie 2 fotos adicionales."
+    assert len(messaging.images) == 7

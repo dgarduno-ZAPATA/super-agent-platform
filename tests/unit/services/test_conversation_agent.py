@@ -154,6 +154,7 @@ class FakeSkillRegistry:
         )
         self.calls: list[tuple[ToolCall, SkillExecutionContext]] = []
         self.inventory_queries: list[dict[str, object]] = []
+        self.photo_requests: list[dict[str, str]] = []
 
     def get_tool_schemas(self) -> list[ToolSchema]:
         return [
@@ -180,6 +181,10 @@ class FakeSkillRegistry:
             }
         )
         return "Resultados de inventario:\n1. Freightliner Cascadia 2020"
+
+    async def send_inventory_photos(self, product_name: str, context: SkillExecutionContext) -> str:
+        self.photo_requests.append({"product_name": product_name, "phone": context.phone})
+        return "Listo, te envie 5 fotos de inventario."
 
 
 def _conversation_id(phone: str = "5214421234567") -> UUID:
@@ -419,3 +424,26 @@ async def test_llm_failure_sends_precanned_fallback_message() -> None:
         "Disculpa, estoy teniendo problemas tecnicos en este momento."
         " Me permites unos minutos y te escribo de vuelta?"
     )
+
+
+@pytest.mark.asyncio
+async def test_photo_only_request_sends_photos_and_single_sentence_ack() -> None:
+    brand = load_brand(Path("brand"))
+    llm = FakeLLMProvider(content="Respuesta larga que no deberia usarse.")
+    messaging = FakeMessagingProvider()
+    event_repo = FakeConversationEventRepository()
+    skills = FakeSkillRegistry()
+    agent = ConversationAgent(
+        llm_provider=llm,
+        messaging_provider=messaging,
+        brand=brand,
+        conversation_event_repository=event_repo,
+        skill_registry=skills,
+    )
+
+    await agent.respond(_event("MAS FOTOS?"), _session("catalog_navigation"))
+
+    assert len(llm.calls) == 0
+    assert len(skills.photo_requests) == 1
+    assert len(messaging.sent_messages) == 1
+    assert messaging.sent_messages[0]["text"] == "Listo, ya te mande las fotos."
