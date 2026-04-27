@@ -83,7 +83,16 @@ async def issue_token(
         )
 
     settings = get_settings()
-    if payload.username != settings.admin_username or payload.password != settings.admin_password:
+    primary_match = (
+        payload.username == settings.admin_username and payload.password == settings.admin_password
+    )
+    secondary_match = (
+        bool(settings.admin_username_2)
+        and bool(settings.admin_password_2)
+        and payload.username == settings.admin_username_2
+        and payload.password == settings.admin_password_2
+    )
+    if not primary_match and not secondary_match:
         attempts.append(now)
         await login_attempt_service.record_attempt(
             ip=client_host,

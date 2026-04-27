@@ -76,6 +76,8 @@ jobs:
         env:
           JWT_SECRET_KEY: ci-test-secret-key-32-chars-long
           ADMIN_PASSWORD: ci-test-admin-password
+          ADMIN_USERNAME_2: admin2
+          ADMIN_PASSWORD_2: ci-test-admin2-password
           INTERNAL_TOKEN: ci-test-internal-token
           EVOLUTION_API_KEY: ci-test-evolution-key
           ADMIN_USERNAME: admin

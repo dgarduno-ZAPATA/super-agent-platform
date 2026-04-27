@@ -85,6 +85,8 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(default=60 * 8, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
     admin_username: str = Field(default="admin", alias="ADMIN_USERNAME")
     admin_password: str = Field(default="", alias="ADMIN_PASSWORD")
+    admin_username_2: str = Field(default="", alias="ADMIN_USERNAME_2")
+    admin_password_2: str = Field(default="", alias="ADMIN_PASSWORD_2")
 
     model_config = SettingsConfigDict(
         env_file=".env.local",

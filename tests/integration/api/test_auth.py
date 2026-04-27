@@ -25,6 +25,25 @@ def test_login_with_valid_credentials_returns_token(client: TestClient) -> None:
     assert payload["token_type"] == "bearer"
 
 
+def test_login_with_secondary_credentials_returns_token(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_USERNAME_2", "admin2")
+    monkeypatch.setenv("ADMIN_PASSWORD_2", "test-admin2-password")
+    get_settings.cache_clear()
+
+    response = client.post(
+        "/api/v1/auth/token",
+        json={"username": "admin2", "password": "test-admin2-password"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "access_token" in payload
+    assert payload["token_type"] == "bearer"
+
+
 def test_login_with_invalid_credentials_returns_401(client: TestClient) -> None:
     response = client.post(
         "/api/v1/auth/token",
@@ -103,3 +122,28 @@ def test_lockout_message_includes_wait_time(client: TestClient) -> None:
     )
     assert blocked.status_code == 429
     assert "minutos" in blocked.json()["detail"]
+
+
+def test_secondary_login_is_disabled_when_username_is_empty(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = get_settings()
+    primary_username = settings.admin_username
+    primary_password = settings.admin_password
+
+    monkeypatch.setenv("ADMIN_USERNAME_2", "")
+    monkeypatch.setenv("ADMIN_PASSWORD_2", "test-admin2-password")
+    get_settings.cache_clear()
+
+    secondary_response = client.post(
+        "/api/v1/auth/token",
+        json={"username": "admin2", "password": "test-admin2-password"},
+    )
+    primary_response = client.post(
+        "/api/v1/auth/token",
+        json={"username": primary_username, "password": primary_password},
+    )
+
+    assert secondary_response.status_code == 401
+    assert primary_response.status_code == 200
