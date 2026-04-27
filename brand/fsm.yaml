@@ -172,11 +172,6 @@ states:
         guard: user_requested_document
         actions:
           - log_transition
-      - target: objection_handling
-        event: user_message
-        guard: always
-        actions:
-          - log_transition
       - target: appointment_flow
         event: agent_command
         guard: always
@@ -198,6 +193,12 @@ states:
         guard: always
         actions:
           - log_transition
+      - target: catalog_navigation
+        event: user_message
+        guard: always
+        actions:
+          - log_transition
+          - update_crm_stage
 
   document_delivery:
     description: Entrega de fichas tecnicas, corridas o documentos.

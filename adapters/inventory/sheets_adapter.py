@@ -81,18 +81,16 @@ class SheetsInventoryAdapter(InventoryProvider):
             mapped = self._map_row(row)
             if mapped is not None:
                 products.append(mapped)
-        sample_brand_model = [
-            " ".join(
-                part
-                for part in (
-                    str(product.get("metadata", {}).get("brand", "")),
-                    str(product.get("metadata", {}).get("model", "")),
-                )
-                if part
-            )
-            for product in products[:5]
-            if isinstance(product.get("metadata"), dict)
-        ]
+        sample_brand_model: list[str] = []
+        for product in products[:5]:
+            metadata = product.get("metadata")
+            if not isinstance(metadata, dict):
+                continue
+            brand = str(metadata.get("brand", "")).strip()
+            model = str(metadata.get("model", "")).strip()
+            combined = " ".join(part for part in (brand, model) if part)
+            if combined:
+                sample_brand_model.append(combined)
         logger.info(
             "inventory_sheet_loaded",
             total_items=len(products),
@@ -274,24 +272,21 @@ class SheetsInventoryAdapter(InventoryProvider):
         return normalized.startswith("http://") or normalized.startswith("https://")
 
     def _build_searchable_text(self, item: dict[str, object]) -> str:
-        metadata = item.get("metadata")
-        brand = ""
-        model = ""
-        if isinstance(metadata, dict):
-            brand = str(metadata.get("brand", ""))
-            model = str(metadata.get("model", ""))
+        metadata = item.get("metadata", {})
+        if not isinstance(metadata, dict):
+            metadata = {}
 
-        base_parts = [
-            str(item.get("sku", "")),
-            str(item.get("name", "")),
-            brand,
-            model,
-            str(item.get("description", "")),
-            str(item.get("category", "")),
-        ]
-        if isinstance(metadata, dict):
-            base_parts.extend(str(value) for value in metadata.values())
-        return self._normalize_text(" ".join(base_parts))
+        searchable = " ".join(
+            [
+                str(item.get("sku", "")),
+                str(item.get("name", "")),
+                str(item.get("description", "")),
+                str(item.get("category", "")),
+                str(metadata.get("location", "")),
+                str(metadata.get("physical_location", "")),
+            ]
+        ).casefold()
+        return self._normalize_text(searchable)
 
     def _build_brand_model_text(self, item: dict[str, object]) -> str:
         metadata = item.get("metadata")

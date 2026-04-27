@@ -58,9 +58,15 @@ class SkillRegistry:
                         "product_name": {
                             "type": "string",
                             "description": "Nombre o termino para buscar producto.",
-                        }
+                        },
+                        "location": {
+                            "type": "string",
+                            "description": (
+                                "Sucursal o ciudad a filtrar, ej: Tampico, Querétaro, Monterrey"
+                            ),
+                        },
                     },
-                    "required": [],
+                    "required": ["product_name"],
                 },
             ),
             ToolSchema(
@@ -109,7 +115,8 @@ class SkillRegistry:
 
             if call.name == "query_inventory":
                 product_name = self._get_optional_string(call.arguments, "product_name")
-                content = self.query_inventory(product_name=product_name)
+                location = self._get_optional_string(call.arguments, "location")
+                content = self.query_inventory(product_name=product_name, location=location)
                 return ToolResult(tool_call_id=call.id, name=call.name, content=content)
 
             if call.name == "send_document":
@@ -159,9 +166,17 @@ class SkillRegistry:
             )
         return "\n".join(lines)
 
-    def query_inventory(self, product_name: str | None = None, max_results: int = 20) -> str:
+    def query_inventory(
+        self,
+        product_name: str | None = None,
+        location: str | None = None,
+        max_results: int = 20,
+    ) -> str:
         query_term = (product_name or "").strip()
+        location_term = (location or "").strip()
         filters: dict[str, object] = {}
+        if location_term:
+            filters["location"] = location_term
         logger.info(
             "inventory_query_start",
             query=query_term,
@@ -172,6 +187,8 @@ class SkillRegistry:
             if product_name and product_name.strip()
             else self._inventory_provider.get_products()
         )
+        if location_term:
+            matches = self._filter_products_by_location(matches, location_term)
         fallback_used = bool(matches) and all(
             not isinstance(product.get("metadata"), dict) for product in matches
         )
@@ -185,13 +202,21 @@ class SkillRegistry:
         logger.info(
             "inventory_query_result",
             query=query_term,
+            location=location_term or None,
             total_results=len(matches),
             skus=[str(product.get("sku", "")) for product in matches[:5]],
             used_fallback=fallback_used,
         )
         if not matches:
-            if product_name and product_name.strip():
-                return f"No se encontraron productos para '{product_name}'."
+            if query_term and location_term:
+                return (
+                    f"No se encontraron productos para '{query_term}' "
+                    f"en la ubicación '{location_term}'."
+                )
+            if query_term:
+                return f"No se encontraron productos para '{query_term}'."
+            if location_term:
+                return f"No se encontraron productos para la ubicación '{location_term}'."
             return "No hay productos disponibles en inventario."
 
         lines = ["Resultados de inventario:"]
@@ -216,6 +241,29 @@ class SkillRegistry:
                 f"Se muestran {len(display_matches)} de {len(matches)} resultados totales."
             )
         return "\n".join(lines)
+
+    @staticmethod
+    def _filter_products_by_location(
+        products: list[dict[str, object]],
+        location: str,
+    ) -> list[dict[str, object]]:
+        normalized_location = location.casefold().strip()
+        if not normalized_location:
+            return products
+
+        filtered: list[dict[str, object]] = []
+        for product in products:
+            metadata = product.get("metadata")
+            if not isinstance(metadata, dict):
+                continue
+            location_value = str(metadata.get("location", "")).casefold()
+            physical_location_value = str(metadata.get("physical_location", "")).casefold()
+            if (
+                normalized_location in location_value
+                or normalized_location in physical_location_value
+            ):
+                filtered.append(product)
+        return filtered
 
     async def send_inventory_photos(
         self,

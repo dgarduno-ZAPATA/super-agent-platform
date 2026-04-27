@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 
 import pytest
+import yaml
 
 from core.fsm.actions import ActionRegistry
 from core.fsm.engine import FSMEngine
@@ -134,3 +136,30 @@ async def test_actions_execute_in_expected_order() -> None:
 
     assert result.actions_executed == ["exit_action", "transition_action", "enter_action"]
     assert execution_order == ["exit_action", "transition_action", "enter_action"]
+
+
+@pytest.mark.asyncio
+async def test_catalog_navigation_user_message_stays_in_catalog_navigation() -> None:
+    payload = yaml.safe_load(Path("brand/fsm.yaml").read_text(encoding="utf-8"))
+    config = FSMConfig.model_validate(payload)
+
+    async def _noop(context: dict[str, object]) -> None:
+        del context
+
+    action_registry: ActionRegistry = {
+        "log_transition": _noop,
+        "update_crm_stage": _noop,
+        "update_session": _noop,
+    }
+    engine = FSMEngine(
+        config=config,
+        current_state="catalog_navigation",
+        action_registry=action_registry,
+    )
+
+    result = await engine.process_event("user_message", context={"inbound_text": "hola"})
+
+    assert result.old_state == "catalog_navigation"
+    assert result.new_state == "catalog_navigation"
+    assert result.transition_taken is True
+    assert result.no_transition_matched is False

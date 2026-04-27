@@ -183,6 +183,102 @@ def test_query_inventory_formats_product_data() -> None:
     assert "Fotos:" in result
 
 
+def test_query_inventory_filters_by_location_when_provided() -> None:
+    class LocationInventoryProvider(FakeInventoryProvider):
+        def get_products(self) -> list[dict[str, object]]:
+            return [
+                {
+                    "sku": "TR-001",
+                    "name": "Tracto Tampico",
+                    "description": "Unidad en patio Tampico",
+                    "price": "1000000.00",
+                    "availability": "disponible",
+                    "category": "tractocamion",
+                    "metadata": {
+                        "location": "Tampico",
+                        "physical_location": "Patio Norte",
+                    },
+                },
+                {
+                    "sku": "TR-002",
+                    "name": "Tracto Monterrey",
+                    "description": "Unidad en patio Monterrey",
+                    "price": "1100000.00",
+                    "availability": "disponible",
+                    "category": "tractocamion",
+                    "metadata": {
+                        "location": "Monterrey",
+                        "physical_location": "Patio Sur",
+                    },
+                },
+            ]
+
+        def search_products(self, query: str) -> list[dict[str, object]]:
+            if "tracto" in query.lower():
+                return self.get_products()
+            return []
+
+    registry = SkillRegistry(
+        knowledge_provider=FakeKnowledgeProvider(),
+        inventory_provider=LocationInventoryProvider(),
+        messaging_provider=FakeMessagingProvider(),
+        brand=load_brand(Path("brand")),
+    )
+
+    result = registry.query_inventory(product_name="tracto", location="Tampico")
+
+    assert "Tracto Tampico" in result
+    assert "Tracto Monterrey" not in result
+
+
+def test_query_inventory_without_location_returns_all_matches() -> None:
+    class LocationInventoryProvider(FakeInventoryProvider):
+        def get_products(self) -> list[dict[str, object]]:
+            return [
+                {
+                    "sku": "TR-001",
+                    "name": "Tracto Tampico",
+                    "description": "Unidad en patio Tampico",
+                    "price": "1000000.00",
+                    "availability": "disponible",
+                    "category": "tractocamion",
+                    "metadata": {
+                        "location": "Tampico",
+                        "physical_location": "Patio Norte",
+                    },
+                },
+                {
+                    "sku": "TR-002",
+                    "name": "Tracto Monterrey",
+                    "description": "Unidad en patio Monterrey",
+                    "price": "1100000.00",
+                    "availability": "disponible",
+                    "category": "tractocamion",
+                    "metadata": {
+                        "location": "Monterrey",
+                        "physical_location": "Patio Sur",
+                    },
+                },
+            ]
+
+        def search_products(self, query: str) -> list[dict[str, object]]:
+            if "tracto" in query.lower():
+                return self.get_products()
+            return []
+
+    registry = SkillRegistry(
+        knowledge_provider=FakeKnowledgeProvider(),
+        inventory_provider=LocationInventoryProvider(),
+        messaging_provider=FakeMessagingProvider(),
+        brand=load_brand(Path("brand")),
+    )
+
+    result = registry.query_inventory(product_name="tracto")
+
+    assert "Tracto Tampico" in result
+    assert "Tracto Monterrey" in result
+
+
 @pytest.mark.asyncio
 async def test_send_document_returns_controlled_error_when_url_not_available() -> None:
     messaging = FakeMessagingProvider()
