@@ -691,6 +691,7 @@ class InboundMessageHandler:
         transcription_text = await self._transcription_provider.transcribe(
             audio_url=media_url,
             mime_type=mime_type,
+            metadata=metadata,
         )
         if transcription_text is None:
             logger.warning(

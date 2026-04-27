@@ -1,16 +1,19 @@
 provider_type: monday
 stage_map:
-  new_lead: Nuevo lead
-  contacted: Contactado
-  qualified: Perfilado
-  quoted: Cotizado
-  nurture: Seguimiento
-  handoff: Transferido a asesor
-  won: Venta cerrada
-  lost: Cerrado perdido
-  do_not_contact: Baja
+  new_lead: Nuevo
+  contacted: Conversando
+  qualified: Calificando
+  quoted: Listo para Handoff
+  nurture: Conversando
+  handoff: Listo para Handoff
+  handoff_done: Handoff Hecho
+  won: Nuevo
+  lost: Nuevo
+  do_not_contact: Nuevo
 field_map:
   lead_name: nombre_contacto
   phone: telefono_principal
   source: fuente_lead
-  vehicle_interest: unidad_interes
+  vehicle_interest: vehiculo_interes
+  city: ciudad
+  fsm_state: etapa_bot

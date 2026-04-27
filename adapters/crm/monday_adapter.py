@@ -1,8 +1,10 @@
-from datetime import date
+from datetime import date, datetime
+from typing import Any
 
 import httpx
 import structlog
 
+from core.brand.loader import load_brand_config
 from core.domain.lead import Lead
 from core.ports.crm_provider import CRMProvider
 
@@ -22,27 +24,19 @@ COL_CANAL = "color_mm2kwvp3"
 COL_ORIGEN = "text_mm2k5g0c"
 COL_NOMBRE_COMPLETO = "text_mm2kz8c6"
 
-STAGE_LABELS = {
-    "greeting": "Nuevo",
-    "discovery": "Conversando",
-    "qualification": "Calificando",
-    "catalog_navigation": "Calificando",
-    "document_delivery": "Listo para Handoff",
-    "appointment": "Listo para Handoff",
-    "handoff": "Handoff Hecho",
-    "closing": "Handoff Hecho",
-}
-
-STAGE_LABEL_ALIASES = {
-    "Nuevo lead": "Nuevo",
-    "Contactado": "Conversando",
-    "Perfilado": "Calificando",
-    "Cotizado": "Calificando",
-    "Seguimiento": "Conversando",
-    "Transferido a asesor": "Handoff Hecho",
-    "Venta cerrada": "Handoff Hecho",
-    "Cerrado perdido": "Handoff Hecho",
-    "Baja": "Handoff Hecho",
+FSM_STAGE_TO_STAGE_KEY = {
+    "idle": "new_lead",
+    "greeting": "contacted",
+    "discovery": "contacted",
+    "qualification": "qualified",
+    "catalog_navigation": "quoted",
+    "document_delivery": "quoted",
+    "objection_handling": "nurture",
+    "appointment_flow": "quoted",
+    "handoff_pending": "handoff",
+    "handoff_active": "handoff",
+    "cooldown": "nurture",
+    "closed": "lost",
 }
 
 
@@ -61,17 +55,31 @@ class MondayCRMAdapter(CRMProvider):
             "Content-Type": "application/json",
             "API-Version": "2024-01",
         }
+        self._stage_map = self._load_stage_map()
+        self._field_map = self._load_field_map()
 
-    async def _gql(self, query: str, variables: dict | None = None) -> dict:
-        payload = {"query": query}
+    async def _gql(
+        self, query: str, variables: dict[str, object] | None = None
+    ) -> dict[str, object]:
+        payload: dict[str, object] = {"query": query}
         if variables:
             payload["variables"] = variables
         async with httpx.AsyncClient(timeout=15) as client:
             response = await client.post(MONDAY_API_URL, json=payload, headers=self._headers)
             response.raise_for_status()
             result = response.json()
+            if not isinstance(result, dict):
+                raise ValueError("Monday GraphQL error: invalid JSON payload")
             if "errors" in result:
-                error_msg = result["errors"][0]["message"]
+                errors = result.get("errors")
+                if isinstance(errors, list) and errors:
+                    first_error = errors[0]
+                    if isinstance(first_error, dict) and "message" in first_error:
+                        error_msg = str(first_error["message"])
+                    else:
+                        error_msg = str(first_error)
+                else:
+                    error_msg = "unknown error"
                 raise ValueError(f"Monday GraphQL error: {error_msg}")
             return result
 
@@ -86,8 +94,22 @@ class MondayCRMAdapter(CRMProvider):
         }
         """
         data = await self._gql(query, {"board": str(self._board_id), "phone": phone})
-        items = data.get("data", {}).get("items_page_by_column_values", {}).get("items", [])
-        return items[0]["id"] if items else None
+        data_block = data.get("data")
+        if not isinstance(data_block, dict):
+            return None
+        items_page = data_block.get("items_page_by_column_values")
+        if not isinstance(items_page, dict):
+            return None
+        items = items_page.get("items")
+        if not isinstance(items, list) or not items:
+            return None
+        first = items[0]
+        if not isinstance(first, dict):
+            return None
+        item_id = first.get("id")
+        if not isinstance(item_id, str):
+            return None
+        return item_id
 
     async def upsert_lead(self, lead: Lead) -> str:
         import json
@@ -95,6 +117,7 @@ class MondayCRMAdapter(CRMProvider):
         today = date.today().isoformat()
         try:
             existing_id = await self._find_item_by_phone(lead.phone)
+            resolved_name = self._resolve_lead_name(lead)
             vehicle_interest = self._attr_as_text(lead, "vehicle_interest")
             city = self._attr_as_text(lead, "city")
             budget = self._attr_as_text(lead, "budget")
@@ -108,7 +131,7 @@ class MondayCRMAdapter(CRMProvider):
             )
             column_values: dict[str, object] = {
                 COL_TELEFONO: lead.phone,
-                COL_NOMBRE_COMPLETO: lead.name or "",
+                COL_NOMBRE_COMPLETO: resolved_name,
                 COL_ORIGEN: lead.source or "WhatsApp Bot",
                 COL_VEHICULO: vehicle_interest or "",
                 COL_RESUMEN: {"text": summary_text} if summary_text else {"text": ""},
@@ -118,7 +141,18 @@ class MondayCRMAdapter(CRMProvider):
             }
             if fsm_state:
                 column_values[COL_ETAPA_BOT] = {"label": self._resolve_stage_label(fsm_state)}
-            col_vals = json.dumps(column_values)
+            optional_column_values = self._build_optional_field_columns(
+                lead=lead,
+                lead_name=resolved_name,
+                source=lead.source or "WhatsApp Bot",
+                vehicle_interest=vehicle_interest,
+                city=city,
+                fsm_state=fsm_state,
+                base_columns=column_values,
+            )
+            request_column_values = dict(column_values)
+            request_column_values.update(optional_column_values)
+            col_vals = json.dumps(request_column_values)
 
             if existing_id:
                 query = """
@@ -128,15 +162,35 @@ class MondayCRMAdapter(CRMProvider):
                   ) { id }
                 }
                 """
-                await self._gql(
-                    query, {"item": existing_id, "board": str(self._board_id), "cols": col_vals}
-                )
+                try:
+                    await self._gql(
+                        query, {"item": existing_id, "board": str(self._board_id), "cols": col_vals}
+                    )
+                except Exception as exc:
+                    if optional_column_values and self._is_optional_column_error(exc):
+                        logger.warning(
+                            "monday_optional_columns_ignored",
+                            method="upsert_lead",
+                            operation="update",
+                            optional_columns=sorted(optional_column_values.keys()),
+                            error=str(exc),
+                        )
+                        await self._gql(
+                            query,
+                            {
+                                "item": existing_id,
+                                "board": str(self._board_id),
+                                "cols": json.dumps(column_values),
+                            },
+                        )
+                    else:
+                        raise
                 logger.info(
                     "monday_lead_upserted", item_id=existing_id, phone=lead.phone, action="updated"
                 )
                 return existing_id
 
-            name = lead.name or lead.phone
+            name = resolved_name
             query = """
             mutation($board: ID!, $name: String!, $cols: JSON!) {
               create_item(
@@ -144,10 +198,38 @@ class MondayCRMAdapter(CRMProvider):
               ) { id }
             }
             """
-            data = await self._gql(
-                query, {"board": str(self._board_id), "name": name, "cols": col_vals}
-            )
-            item_id = data["data"]["create_item"]["id"]
+            try:
+                data = await self._gql(
+                    query, {"board": str(self._board_id), "name": name, "cols": col_vals}
+                )
+            except Exception as exc:
+                if optional_column_values and self._is_optional_column_error(exc):
+                    logger.warning(
+                        "monday_optional_columns_ignored",
+                        method="upsert_lead",
+                        operation="create",
+                        optional_columns=sorted(optional_column_values.keys()),
+                        error=str(exc),
+                    )
+                    data = await self._gql(
+                        query,
+                        {
+                            "board": str(self._board_id),
+                            "name": name,
+                            "cols": json.dumps(column_values),
+                        },
+                    )
+                else:
+                    raise
+            data_block = data.get("data")
+            if not isinstance(data_block, dict):
+                raise ValueError("Monday create_item response missing data block")
+            created_item = data_block.get("create_item")
+            if not isinstance(created_item, dict):
+                raise ValueError("Monday create_item response missing create_item block")
+            item_id = created_item.get("id")
+            if not isinstance(item_id, str):
+                raise ValueError("Monday create_item response id is invalid")
             logger.info("monday_lead_upserted", item_id=item_id, phone=lead.phone, action="created")
             return item_id
         except Exception as exc:
@@ -259,7 +341,7 @@ class MondayCRMAdapter(CRMProvider):
     async def mark_do_not_contact(self, lead_id: str, reason: str) -> None:
         logger.info("monday_do_not_contact_pending", lead_id=lead_id, reason=reason)
 
-    async def schedule_reactivation(self, lead_id: str, not_before) -> None:
+    async def schedule_reactivation(self, lead_id: str, not_before: datetime) -> None:
         logger.info("monday_reactivation_pending", lead_id=lead_id, not_before=str(not_before))
 
     @staticmethod
@@ -293,8 +375,91 @@ class MondayCRMAdapter(CRMProvider):
         return " | ".join(parts)
 
     @staticmethod
-    def _resolve_stage_label(stage: str) -> str:
+    def _load_stage_map() -> dict[str, str]:
+        try:
+            return dict(load_brand_config().crm_mapping.stage_map)
+        except Exception as exc:
+            logger.warning("monday_stage_map_unavailable", error=str(exc), fallback="Nuevo")
+            return {}
+
+    @staticmethod
+    def _load_field_map() -> dict[str, str]:
+        try:
+            return dict(load_brand_config().crm_mapping.field_map)
+        except Exception as exc:
+            logger.warning("monday_field_map_unavailable", error=str(exc))
+            return {}
+
+    def _resolve_stage_label(self, stage: str) -> str:
         normalized = stage.strip()
-        if normalized in STAGE_LABELS:
-            return STAGE_LABELS[normalized]
-        return STAGE_LABEL_ALIASES.get(normalized, normalized)
+        stage_key = FSM_STAGE_TO_STAGE_KEY.get(normalized, normalized)
+        label = self._stage_map.get(stage_key)
+        if label:
+            return label
+
+        # If caller already provided a board label, preserve it.
+        if normalized in self._stage_map.values():
+            return normalized
+
+        logger.warning("monday_stage_label_not_found", stage=stage, fallback="Nuevo")
+        return "Nuevo"
+
+    def _build_optional_field_columns(
+        self,
+        lead: Lead,
+        lead_name: str,
+        source: str,
+        vehicle_interest: str,
+        city: str,
+        fsm_state: str,
+        base_columns: dict[str, object],
+    ) -> dict[str, object]:
+        source_by_key: dict[str, Any] = {
+            "lead_name": lead_name,
+            "phone": lead.phone,
+            "source": source,
+            "vehicle_interest": vehicle_interest,
+            "city": city,
+            "fsm_state": fsm_state,
+        }
+        optional_columns: dict[str, object] = {}
+        for canonical_key, monday_column_id in self._field_map.items():
+            column_id = monday_column_id.strip()
+            if not column_id or column_id in base_columns:
+                continue
+
+            value = source_by_key.get(canonical_key)
+            if value is None:
+                continue
+            if isinstance(value, str):
+                normalized = value.strip()
+                if not normalized:
+                    continue
+                optional_columns[column_id] = normalized
+                continue
+            optional_columns[column_id] = str(value)
+        return optional_columns
+
+    @staticmethod
+    def _is_optional_column_error(exc: Exception) -> bool:
+        message = str(exc).casefold()
+        keywords = (
+            "column",
+            "label",
+            "status",
+            "doesn't exist",
+            "does not exist",
+            "not found",
+            "invalid",
+        )
+        return any(keyword in message for keyword in keywords)
+
+    @staticmethod
+    def _resolve_lead_name(lead: Lead) -> str:
+        raw_name = lead.name.strip()
+        first_message = MondayCRMAdapter._attr_as_text(lead, "last_message_text")
+        if raw_name and len(raw_name) >= 3 and raw_name.casefold() != first_message.casefold():
+            return raw_name
+
+        suffix = lead.phone[-4:] if lead.phone else "0000"
+        return f"Lead {suffix}"
