@@ -159,6 +159,19 @@ class EvolutionMessagingAdapter(MessagingProvider):
         text = extract_text(message_payload)
         media_url = EvolutionMessagingAdapter._extract_media_url(message_payload)
         received_at = EvolutionMessagingAdapter._parse_received_at(message_payload.messageTimestamp)
+        root_message = raw_payload.get("message")
+        root_message_map = root_message if isinstance(root_message, dict) else {}
+        data_payload = raw_payload.get("data")
+        data_payload_map = data_payload if isinstance(data_payload, dict) else {}
+        if message_kind.value in {"audio", "ptt"}:
+            logger.debug(
+                "evolution_audio_raw_payload_debug",
+                raw_keys=list(raw_payload.keys()),
+                message_keys=list(root_message_map.keys()),
+                data_keys=list(data_payload_map.keys()) if "data" in raw_payload else [],
+                has_audio_message="audioMessage" in root_message_map,
+                has_ptt_message="pttMessage" in root_message_map,
+            )
         audio_crypto_metadata = EvolutionMessagingAdapter._extract_audio_crypto_metadata(
             raw_payload=raw_payload,
             message_kind=message_kind,
