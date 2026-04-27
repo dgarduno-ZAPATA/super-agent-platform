@@ -2513,7 +2513,14 @@ async def admin_panel() -> HTMLResponse:
         <label for="username">Usuario</label>
         <input id="username" name="username" type="text" autocomplete="username" required />
         <label for="password">Password</label>
-        <input id="password" name="password" type="password" autocomplete="current-password" required />
+        <div style="position:relative;">
+          <input id="password" name="password" type="password" autocomplete="current-password" required style="padding-right:40px; width:100%; box-sizing:border-box;" />
+          <button type="button" id="toggle-password"
+            style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:var(--text-secondary); font-size:13px; padding:0;"
+            aria-label="Mostrar contraseña">
+            👁
+          </button>
+        </div>
         <div id="login-2fa-wrap" class="hidden">
           <label for="login-2fa-code">Código de autenticación (6 dígitos)</label>
           <input id="login-2fa-code" name="login_2fa_code" type="text" inputmode="numeric" maxlength="8" autocomplete="one-time-code" />
@@ -5141,8 +5148,12 @@ con [tu unidad|el {vehiculo}]?`,
       confirm2fa();
     });
 
+    let _loginInFlight = false;
     loginForm.addEventListener("submit", async (event) => {
       event.preventDefault();
+      if (_loginInFlight) return;
+      _loginInFlight = true;
+      try {
       loginError.textContent = "";
       const submitBtn = loginForm.querySelector("button[type='submit']");
       const inputs = loginForm.querySelectorAll("input");
@@ -5227,6 +5238,9 @@ con [tu unidad|el {vehiculo}]?`,
         showToast("error", "Error de red al iniciar sesión");
         restoreLogin();
       }
+      } finally {
+        _loginInFlight = false;
+      }
     });
 
     tabs.addEventListener("click", (event) => {
@@ -5290,6 +5304,13 @@ con [tu unidad|el {vehiculo}]?`,
       setActiveTab("dashboard");
       showToast("info", "Sesión restaurada");
     })();
+
+    document.getElementById('toggle-password').addEventListener('click', function() {
+      const input = document.getElementById('password');
+      const isHidden = input.type === 'password';
+      input.type = isHidden ? 'text' : 'password';
+      this.textContent = isHidden ? '🙈' : '👁';
+    });
   </script>
 </body>
 </html>

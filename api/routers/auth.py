@@ -84,13 +84,14 @@ async def issue_token(
 
     settings = get_settings()
     primary_match = (
-        payload.username == settings.admin_username and payload.password == settings.admin_password
+        payload.username.strip() == settings.admin_username.strip()
+        and payload.password.strip() == settings.admin_password.strip()
     )
     secondary_match = (
-        bool(settings.admin_username_2)
-        and bool(settings.admin_password_2)
-        and payload.username == settings.admin_username_2
-        and payload.password == settings.admin_password_2
+        bool(settings.admin_username_2.strip())
+        and bool(settings.admin_password_2.strip())
+        and payload.username.strip() == settings.admin_username_2.strip()
+        and payload.password.strip() == settings.admin_password_2.strip()
     )
     if not primary_match and not secondary_match:
         attempts.append(now)
