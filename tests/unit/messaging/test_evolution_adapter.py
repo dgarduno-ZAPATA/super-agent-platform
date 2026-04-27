@@ -111,3 +111,40 @@ def test_parse_inbound_event_handles_audio_message() -> None:
     assert event.kind is MessageKind.AUDIO
     assert event.media_url == "https://cdn.example.com/audio.ogg"
     assert event.text is None
+    assert event.metadata["media_key"] is None
+    assert event.metadata["file_enc_sha256"] is None
+    assert event.metadata["file_sha256"] is None
+
+
+def test_parse_inbound_event_extracts_audio_crypto_metadata() -> None:
+    payload = {
+        "event": "messages.upsert",
+        "instance": "selectrucks-zapata",
+        "data": {
+            "key": {
+                "remoteJid": "5214421234567@s.whatsapp.net",
+                "id": "audio-msg-2",
+                "fromMe": False,
+            },
+            "messageType": "audioMessage",
+            "message": {
+                "audioMessage": {
+                    "url": "https://cdn.example.com/audio.enc",
+                    "mediaKey": "bWVkaWEtMTIz",
+                    "fileEncSha256": "ZW5jLWhhc2g=",
+                    "fileSha256": "ZmlsZS1oYXNo",
+                }
+            },
+            "pushName": "Cliente Demo",
+            "messageTimestamp": 1713200002,
+            "instanceId": "instance-1",
+            "source": "android",
+        },
+    }
+
+    event = EvolutionMessagingAdapter.parse_inbound_event(payload)
+
+    assert event.kind is MessageKind.AUDIO
+    assert event.metadata["media_key"] == "bWVkaWEtMTIz"
+    assert event.metadata["file_enc_sha256"] == "ZW5jLWhhc2g="
+    assert event.metadata["file_sha256"] == "ZmlsZS1oYXNo"

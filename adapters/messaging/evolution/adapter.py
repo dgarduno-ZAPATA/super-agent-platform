@@ -21,6 +21,7 @@ from core.domain.messaging import (
     InboundEvent,
     InvalidInboundPayloadError,
     MessageDeliveryReceipt,
+    MessageKind,
     UnsupportedEventTypeError,
 )
 from core.ports.messaging_provider import MessagingProvider
@@ -158,6 +159,10 @@ class EvolutionMessagingAdapter(MessagingProvider):
         text = extract_text(message_payload)
         media_url = EvolutionMessagingAdapter._extract_media_url(message_payload)
         received_at = EvolutionMessagingAdapter._parse_received_at(message_payload.messageTimestamp)
+        audio_crypto_metadata = EvolutionMessagingAdapter._extract_audio_crypto_metadata(
+            raw_payload=raw_payload,
+            message_kind=message_kind,
+        )
 
         return InboundEvent(
             message_id=message_payload.key.id,
@@ -182,6 +187,7 @@ class EvolutionMessagingAdapter(MessagingProvider):
                 "instance": envelope.instance,
                 "event": envelope.event,
                 "message_type": message_payload.messageType,
+                **audio_crypto_metadata,
             },
         )
 
@@ -213,3 +219,31 @@ class EvolutionMessagingAdapter(MessagingProvider):
             return datetime.now(UTC)
 
         return datetime.fromtimestamp(parsed_timestamp, tz=UTC)
+
+    @staticmethod
+    def _extract_audio_crypto_metadata(
+        raw_payload: dict[str, object],
+        message_kind: MessageKind,
+    ) -> dict[str, object]:
+        if message_kind is not MessageKind.AUDIO:
+            return {}
+
+        data = raw_payload.get("data")
+        if not isinstance(data, dict):
+            return {}
+        message = data.get("message")
+        if not isinstance(message, dict):
+            return {}
+        audio_message = message.get("audioMessage")
+        if not isinstance(audio_message, dict):
+            return {}
+
+        media_key = audio_message.get("mediaKey")
+        file_enc_sha256 = audio_message.get("fileEncSha256")
+        file_sha256 = audio_message.get("fileSha256")
+
+        return {
+            "media_key": media_key if isinstance(media_key, str) else None,
+            "file_enc_sha256": file_enc_sha256 if isinstance(file_enc_sha256, str) else None,
+            "file_sha256": file_sha256 if isinstance(file_sha256, str) else None,
+        }

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+
 import httpx
 import pytest
 
@@ -64,3 +67,84 @@ async def test_vertex_transcription_adapter_returns_none_for_inaudible(
     result = await adapter.transcribe("https://cdn.example.com/audio.ogg")
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_vertex_transcription_adapter_uses_url_fallback_when_media_key_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_vertex = FakeVertexAdapter("Transcripcion normal")
+    adapter = VertexTranscriptionAdapter(vertex_adapter=fake_vertex)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        "adapters.llm.vertex_transcription_adapter.httpx.AsyncClient",
+        lambda timeout: _FakeAudioClient(b"audio-bytes"),  # noqa: ARG005
+    )
+
+    async def _unexpected_decrypt(
+        encrypted_url: str,
+        media_key_b64: str,
+        mime_type: str = "audio/ogg",
+    ) -> bytes:
+        del encrypted_url, media_key_b64, mime_type
+        raise AssertionError("decryptor must not be called when media_key is absent")
+
+    monkeypatch.setattr(
+        "adapters.llm.vertex_transcription_adapter.download_and_decrypt_audio",
+        _unexpected_decrypt,
+    )
+
+    result = await adapter.transcribe(
+        "https://cdn.example.com/audio.ogg",
+        metadata={},
+    )
+
+    assert result == "Transcripcion normal"
+    assert len(fake_vertex.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_vertex_transcription_adapter_uses_decryptor_when_media_key_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_vertex = FakeVertexAdapter("Texto descifrado")
+    adapter = VertexTranscriptionAdapter(vertex_adapter=fake_vertex)  # type: ignore[arg-type]
+    decrypted_audio = b"OggS-decrypted-audio"
+
+    async def _fake_decrypt(
+        encrypted_url: str,
+        media_key_b64: str,
+        mime_type: str = "audio/ogg",
+    ) -> bytes:
+        del encrypted_url, media_key_b64, mime_type
+        return decrypted_audio
+
+    class _FailClient:
+        async def __aenter__(self) -> _FailClient:
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            del exc_type, exc, tb
+
+        async def get(self, url: str) -> httpx.Response:
+            del url
+            raise AssertionError("URL fallback should not be used when decrypt succeeds")
+
+    monkeypatch.setattr(
+        "adapters.llm.vertex_transcription_adapter.download_and_decrypt_audio",
+        _fake_decrypt,
+    )
+    monkeypatch.setattr(
+        "adapters.llm.vertex_transcription_adapter.httpx.AsyncClient",
+        lambda timeout: _FailClient(),  # noqa: ARG005
+    )
+
+    file_sha = base64.b64encode(hashlib.sha256(decrypted_audio).digest()).decode("utf-8")
+    result = await adapter.transcribe(
+        "https://cdn.example.com/audio.enc",
+        mime_type="audio/ogg",
+        metadata={"media_key": "bWVkaWEta2V5", "file_sha256": file_sha},
+    )
+
+    assert result == "Texto descifrado"
+    assert len(fake_vertex.calls) == 1
