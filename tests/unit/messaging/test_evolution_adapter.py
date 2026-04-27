@@ -148,3 +148,68 @@ def test_parse_inbound_event_extracts_audio_crypto_metadata() -> None:
     assert event.metadata["media_key"] == "bWVkaWEtMTIz"
     assert event.metadata["file_enc_sha256"] == "ZW5jLWhhc2g="
     assert event.metadata["file_sha256"] == "ZmlsZS1oYXNo"
+
+
+def test_parse_inbound_event_extracts_audio_crypto_metadata_from_top_level_fallback() -> None:
+    payload = {
+        "event": "messages.upsert",
+        "instance": "selectrucks-zapata",
+        "mediaKey": "bWVkaWEtZmFsbGJhY2s=",
+        "fileEncSha256": "ZW5jLWZhbGxiYWNr",
+        "fileSha256": "ZmlsZS1mYWxsYmFjaw==",
+        "data": {
+            "key": {
+                "remoteJid": "5214421234567@s.whatsapp.net",
+                "id": "audio-msg-3",
+                "fromMe": False,
+            },
+            "messageType": "audioMessage",
+            "message": {
+                "audioMessage": {
+                    "url": "https://cdn.example.com/audio.enc",
+                }
+            },
+            "pushName": "Cliente Demo",
+            "messageTimestamp": 1713200003,
+            "instanceId": "instance-1",
+            "source": "android",
+        },
+    }
+
+    event = EvolutionMessagingAdapter.parse_inbound_event(payload)
+
+    assert event.kind is MessageKind.AUDIO
+    assert event.metadata["media_key"] == "bWVkaWEtZmFsbGJhY2s="
+    assert event.metadata["file_enc_sha256"] == "ZW5jLWZhbGxiYWNr"
+    assert event.metadata["file_sha256"] == "ZmlsZS1mYWxsYmFjaw=="
+
+
+def test_parse_inbound_event_maps_ptt_message_as_audio() -> None:
+    payload = {
+        "event": "messages.upsert",
+        "instance": "selectrucks-zapata",
+        "data": {
+            "key": {
+                "remoteJid": "5214421234567@s.whatsapp.net",
+                "id": "ptt-msg-1",
+                "fromMe": False,
+            },
+            "messageType": "pttMessage",
+            "message": {
+                "pttMessage": {
+                    "url": "https://cdn.example.com/voice.enc",
+                    "mediaKey": "cHR0LW1lZGlhLWtleQ==",
+                }
+            },
+            "pushName": "Cliente Demo",
+            "messageTimestamp": 1713200004,
+            "instanceId": "instance-1",
+            "source": "android",
+        },
+    }
+
+    event = EvolutionMessagingAdapter.parse_inbound_event(payload)
+
+    assert event.kind is MessageKind.AUDIO
+    assert event.media_url == "https://cdn.example.com/voice.enc"
+    assert event.metadata["media_key"] == "cHR0LW1lZGlhLWtleQ=="

@@ -62,6 +62,7 @@ class EvolutionMessageContent(StrictEvolutionModel):
     extendedTextMessage: EvolutionExtendedTextMessage | None = None
     imageMessage: EvolutionImageMessage | None = None
     audioMessage: EvolutionAudioMessage | None = None
+    pttMessage: EvolutionAudioMessage | None = None
     documentMessage: EvolutionDocumentMessage | None = None
     videoMessage: EvolutionVideoMessage | None = None
     locationMessage: EvolutionLocationMessage | None = None

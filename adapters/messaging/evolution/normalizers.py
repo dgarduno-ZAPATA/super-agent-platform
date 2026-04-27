@@ -10,6 +10,8 @@ _KNOWN_MESSAGE_TYPES: dict[str, MessageKind] = {
     "extendedTextMessage": MessageKind.TEXT,
     "imageMessage": MessageKind.IMAGE,
     "audioMessage": MessageKind.AUDIO,
+    "pttMessage": MessageKind.AUDIO,
+    "ptt": MessageKind.AUDIO,
     "documentMessage": MessageKind.DOCUMENT,
     "videoMessage": MessageKind.VIDEO,
     "stickerMessage": MessageKind.UNSUPPORTED,
