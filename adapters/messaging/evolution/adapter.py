@@ -163,12 +163,13 @@ class EvolutionMessagingAdapter(MessagingProvider):
         root_message_map = root_message if isinstance(root_message, dict) else {}
         data_payload = raw_payload.get("data")
         data_payload_map = data_payload if isinstance(data_payload, dict) else {}
-        if message_kind.value in {"audio", "ptt"} or message_payload.messageType in {
-            "audioMessage",
-            "pttMessage",
-            "ptt",
-        }:
-            logger.debug(
+        message_type_normalized = message_payload.messageType.strip().casefold()
+        if (
+            message_kind.value in {"audio", "ptt"}
+            or "audio" in message_type_normalized
+            or "ptt" in message_type_normalized
+        ):
+            logger.info(
                 "evolution_audio_raw_payload_debug",
                 raw_keys=list(raw_payload.keys()),
                 message_keys=list(root_message_map.keys()),
