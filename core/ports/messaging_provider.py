@@ -25,6 +25,13 @@ class MessagingProvider(Protocol):
     async def mark_read(self, message_id: str) -> None:
         """Mark a previously seen inbound message as read in the underlying channel."""
 
+    async def get_media_base64(
+        self,
+        message_id: str,
+        sender_id: str,
+        from_me: bool = False,
+    ) -> str | None: ...
+
     @staticmethod
     def parse_inbound_event(raw_payload: dict[str, object]) -> InboundEvent:
         """Normalize a provider webhook payload into the canonical inbound event shape."""

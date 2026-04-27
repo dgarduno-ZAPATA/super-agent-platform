@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
@@ -21,7 +22,6 @@ from core.domain.messaging import (
     InboundEvent,
     InvalidInboundPayloadError,
     MessageDeliveryReceipt,
-    MessageKind,
     UnsupportedEventTypeError,
 )
 from core.ports.messaging_provider import MessagingProvider
@@ -85,6 +85,67 @@ class EvolutionMessagingAdapter(MessagingProvider):
             f"/chat/markMessageAsRead/{self._settings.evolution_instance_name}",
             json={"messageId": message_id},
         )
+
+    async def get_media_base64(
+        self,
+        message_id: str,
+        sender_id: str,
+        from_me: bool = False,
+    ) -> str | None:
+        url = (
+            f"{self._settings.evolution_base_url.rstrip('/')}"
+            f"/chat/getBase64FromMediaMessage"
+            f"/{self._settings.evolution_instance_name}"
+        )
+        payload = {
+            "message": {
+                "key": {
+                    "remoteJid": sender_id,
+                    "id": message_id,
+                    "fromMe": from_me,
+                }
+            },
+            "convertToMp4": False,
+        }
+
+        for attempt in range(1, 4):
+            try:
+                response = await self._client.post(url, json=payload)
+                if response.status_code in (200, 201):
+                    data = response.json()
+                    base64_raw: str | None = None
+                    if isinstance(data, dict):
+                        base64_raw = data.get("base64") or data.get("media") or data.get("data")
+                    elif isinstance(data, str):
+                        base64_raw = data
+
+                    if base64_raw:
+                        if "base64," in base64_raw:
+                            base64_raw = base64_raw.split("base64,", 1)[1]
+                        logger.info(
+                            "evolution_audio_base64_retrieved",
+                            attempt=attempt,
+                            message_id=message_id,
+                            size=len(base64_raw),
+                        )
+                        return base64_raw
+
+            except Exception as exc:
+                logger.warning(
+                    "evolution_audio_base64_attempt_failed",
+                    attempt=attempt,
+                    message_id=message_id,
+                    error=str(exc),
+                )
+
+            if attempt < 3:
+                await asyncio.sleep(2.0)
+
+        logger.error(
+            "evolution_audio_base64_all_retries_failed",
+            message_id=message_id,
+        )
+        return None
 
     async def _send_message(
         self, endpoint: str, payload: dict[str, Any], correlation_id: str
@@ -159,10 +220,6 @@ class EvolutionMessagingAdapter(MessagingProvider):
         text = extract_text(message_payload)
         media_url = EvolutionMessagingAdapter._extract_media_url(message_payload)
         received_at = EvolutionMessagingAdapter._parse_received_at(message_payload.messageTimestamp)
-        audio_crypto_metadata = EvolutionMessagingAdapter._extract_audio_crypto_metadata(
-            raw_payload=raw_payload,
-            message_kind=message_kind,
-        )
 
         return InboundEvent(
             message_id=message_payload.key.id,
@@ -187,7 +244,6 @@ class EvolutionMessagingAdapter(MessagingProvider):
                 "instance": envelope.instance,
                 "event": envelope.event,
                 "message_type": message_payload.messageType,
-                **audio_crypto_metadata,
             },
         )
 
@@ -221,115 +277,3 @@ class EvolutionMessagingAdapter(MessagingProvider):
             return datetime.now(UTC)
 
         return datetime.fromtimestamp(parsed_timestamp, tz=UTC)
-
-    @staticmethod
-    def _extract_audio_crypto_metadata(
-        raw_payload: dict[str, object],
-        message_kind: MessageKind,
-    ) -> dict[str, object]:
-        if message_kind is not MessageKind.AUDIO:
-            return {}
-
-        candidates = EvolutionMessagingAdapter._audio_crypto_candidates(raw_payload)
-        media_key = EvolutionMessagingAdapter._first_non_empty_string(
-            candidates,
-            ("mediaKey", "media_key", "mediakey"),
-        )
-        file_enc_sha256 = EvolutionMessagingAdapter._first_non_empty_string(
-            candidates,
-            ("fileEncSha256", "file_enc_sha256"),
-        )
-        file_sha256 = EvolutionMessagingAdapter._first_non_empty_string(
-            candidates,
-            ("fileSha256", "file_sha256"),
-        )
-
-        if media_key is None:
-            media_key = EvolutionMessagingAdapter._recursive_find_first_string(
-                raw_payload,
-                ("mediaKey", "media_key"),
-            )
-        if file_enc_sha256 is None:
-            file_enc_sha256 = EvolutionMessagingAdapter._recursive_find_first_string(
-                raw_payload,
-                ("fileEncSha256", "file_enc_sha256"),
-            )
-        if file_sha256 is None:
-            file_sha256 = EvolutionMessagingAdapter._recursive_find_first_string(
-                raw_payload,
-                ("fileSha256", "file_sha256"),
-            )
-
-        return {
-            "media_key": media_key,
-            "file_enc_sha256": file_enc_sha256,
-            "file_sha256": file_sha256,
-        }
-
-    @staticmethod
-    def _audio_crypto_candidates(raw_payload: dict[str, object]) -> list[dict[str, object]]:
-        candidates: list[dict[str, object]] = []
-
-        def _add_candidate(value: object) -> None:
-            if isinstance(value, dict):
-                candidates.append(value)
-
-        data = raw_payload.get("data")
-        data_map = data if isinstance(data, dict) else {}
-        message = data_map.get("message")
-        message_map = message if isinstance(message, dict) else {}
-        root_message = raw_payload.get("message")
-        root_message_map = root_message if isinstance(root_message, dict) else {}
-
-        for container in (
-            raw_payload,
-            data_map,
-            message_map,
-            root_message_map,
-            data_map.get("audioMessage"),
-            data_map.get("pttMessage"),
-            message_map.get("audioMessage"),
-            message_map.get("pttMessage"),
-            root_message_map.get("audioMessage"),
-            root_message_map.get("pttMessage"),
-            raw_payload.get("audioMessage"),
-            raw_payload.get("pttMessage"),
-        ):
-            _add_candidate(container)
-
-        return candidates
-
-    @staticmethod
-    def _first_non_empty_string(
-        candidates: list[dict[str, object]],
-        keys: tuple[str, ...],
-    ) -> str | None:
-        for candidate in candidates:
-            for key in keys:
-                value = candidate.get(key)
-                if isinstance(value, str):
-                    normalized = value.strip()
-                    if normalized:
-                        return normalized
-        return None
-
-    @staticmethod
-    def _recursive_find_first_string(payload: object, keys: tuple[str, ...]) -> str | None:
-        if isinstance(payload, dict):
-            for key in keys:
-                value = payload.get(key)
-                if isinstance(value, str):
-                    normalized = value.strip()
-                    if normalized:
-                        return normalized
-            for value in payload.values():
-                nested = EvolutionMessagingAdapter._recursive_find_first_string(value, keys)
-                if nested is not None:
-                    return nested
-            return None
-        if isinstance(payload, list):
-            for item in payload:
-                nested = EvolutionMessagingAdapter._recursive_find_first_string(item, keys)
-                if nested is not None:
-                    return nested
-        return None

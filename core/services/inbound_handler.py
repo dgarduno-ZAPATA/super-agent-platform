@@ -4,7 +4,6 @@ import asyncio
 import re
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from pathlib import Path
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 import sentry_sdk
@@ -668,57 +667,52 @@ class InboundMessageHandler:
         if inbound_event.occurred_at is not None:
             payload["occurred_at"] = inbound_event.occurred_at.isoformat()
 
-        transcription_text = inbound_event.metadata.get("transcription_text")
-        if inbound_event.kind is MessageKind.AUDIO and isinstance(transcription_text, str):
-            payload["transcription_text"] = transcription_text
-
         return payload
 
     async def _enrich_audio_event(
         self, inbound_event: InboundEvent
     ) -> tuple[InboundEvent, str | None]:
-        media_url = inbound_event.media_url
-        metadata = dict(inbound_event.metadata)
-        if media_url is None:
-            logger.warning("audio_transcription_failed", message_id=inbound_event.message_id)
-            return (
-                replace(inbound_event, metadata=metadata),
-                "Recibi tu nota de voz pero no pude escucharla bien. "
-                "Puedes escribirme lo que necesitas?",
-            )
+        message_id = inbound_event.message_id
+        sender_id = inbound_event.sender_id
 
-        mime_type = self._guess_audio_mime_type(media_url)
-        transcription_text = await self._transcription_provider.transcribe(
-            audio_url=media_url,
-            mime_type=mime_type,
-            metadata=metadata,
+        logger.info("audio_enrich_start", message_id=message_id, sender_id=sender_id)
+
+        audio_base64 = await self._messaging_provider.get_media_base64(
+            message_id=message_id,
+            sender_id=sender_id,
         )
-        if transcription_text is None:
-            logger.warning(
-                "audio_transcription_failed",
-                message_id=inbound_event.message_id,
-                media_url=media_url,
-                mime_type=mime_type,
-            )
-            metadata["transcription_failed"] = True
+
+        if not audio_base64:
+            logger.warning("audio_base64_unavailable", message_id=message_id)
             return (
-                replace(inbound_event, metadata=metadata),
-                "Recibi tu nota de voz pero no pude escucharla bien. "
-                "Puedes escribirme lo que necesitas?",
+                inbound_event,
+                "No pude escuchar el audio. ¿Me puedes escribir lo que necesitas?",
             )
 
+        transcription = await self._transcription_provider.transcribe(
+            audio_base64=audio_base64,
+            mime_type="audio/ogg",
+        )
+
+        if not transcription:
+            logger.warning("audio_transcription_unavailable", message_id=message_id)
+            return (
+                inbound_event,
+                "No entendí bien el audio. ¿Me puedes escribir?",
+            )
+
+        enriched_text = f'[Mensaje de voz transcrito: "{transcription}"]'
         logger.info(
-            "audio_transcribed",
-            message_id=inbound_event.message_id,
-            chars=len(transcription_text),
-            media_url=media_url,
+            "audio_transcription_injected",
+            message_id=message_id,
+            chars=len(enriched_text),
         )
-        metadata["transcription_text"] = transcription_text
+
         return (
             replace(
                 inbound_event,
-                text=transcription_text if inbound_event.text is None else inbound_event.text,
-                metadata=metadata,
+                kind=MessageKind.TEXT,
+                text=enriched_text,
             ),
             None,
         )
@@ -1013,22 +1007,6 @@ class InboundMessageHandler:
     @staticmethod
     def _build_conversation_id(phone: str) -> UUID:
         return uuid5(NAMESPACE_URL, f"whatsapp:{phone}")
-
-    @staticmethod
-    def _guess_audio_mime_type(media_url: str | None) -> str:
-        if media_url is None:
-            return "audio/ogg"
-
-        suffix = Path(media_url).suffix.lower()
-        if suffix in {".ogg", ".opus"}:
-            return "audio/ogg"
-        if suffix == ".mp3":
-            return "audio/mpeg"
-        if suffix == ".wav":
-            return "audio/wav"
-        if suffix == ".m4a":
-            return "audio/mp4"
-        return "audio/ogg"
 
     @staticmethod
     def _set_sentry_tags(lead_id: UUID, conversation_id: UUID, fsm_state: str) -> None:

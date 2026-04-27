@@ -23,9 +23,15 @@ from core.services.inbound_handler import InboundMessageHandler
 
 
 class FakeMessagingProvider(MessagingProvider):
-    def __init__(self, event: InboundEvent | None = None, error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        event: InboundEvent | None = None,
+        error: Exception | None = None,
+        audio_base64: str | None = "dGVzdA==",
+    ) -> None:
         self._event = event
         self._error = error
+        self._audio_base64 = audio_base64
         self.sent_messages: list[dict[str, str]] = []
 
     async def send_text(self, to: str, text: str, correlation_id: str) -> MessageDeliveryReceipt:
@@ -61,6 +67,12 @@ class FakeMessagingProvider(MessagingProvider):
 
     async def mark_read(self, message_id: str) -> None:
         raise NotImplementedError
+
+    async def get_media_base64(
+        self, message_id: str, sender_id: str, from_me: bool = False
+    ) -> str | None:
+        del message_id, sender_id, from_me
+        return self._audio_base64
 
     def parse_inbound_event(self, raw_payload: dict[str, object]) -> InboundEvent:
         if self._error is not None:
@@ -102,6 +114,12 @@ class SequencedMessagingProvider(MessagingProvider):
 
     async def mark_read(self, message_id: str) -> None:
         raise NotImplementedError
+
+    async def get_media_base64(
+        self, message_id: str, sender_id: str, from_me: bool = False
+    ) -> str | None:
+        del message_id, sender_id, from_me
+        return None
 
     def parse_inbound_event(self, raw_payload: dict[str, object]) -> InboundEvent:
         del raw_payload
@@ -236,15 +254,14 @@ class FakeSilencedUserRepository:
 class FakeTranscriptionProvider:
     def __init__(self, transcription_text: str | None = "Transcribed audio") -> None:
         self.transcription_text = transcription_text
-        self.calls: list[tuple[str, str | None, dict[str, object] | None]] = []
+        self.calls: list[tuple[str, str]] = []
 
     async def transcribe(
         self,
-        audio_url: str,
-        mime_type: str | None = None,
-        metadata: dict[str, object] | None = None,
+        audio_base64: str,
+        mime_type: str = "audio/ogg",
     ) -> str | None:
-        self.calls.append((audio_url, mime_type, metadata))
+        self.calls.append((audio_base64, mime_type))
         return self.transcription_text
 
 
@@ -580,7 +597,10 @@ async def test_audio_message_calls_transcription_provider() -> None:
     transcription_provider = FakeTranscriptionProvider("Texto transcrito")
     conversation_agent = FakeConversationAgent()
     handler = _build_handler(
-        messaging_provider=FakeMessagingProvider(event=_build_event(MessageKind.AUDIO)),
+        messaging_provider=FakeMessagingProvider(
+            event=_build_event(MessageKind.AUDIO),
+            audio_base64="dGVzdA==",
+        ),
         event_repo=event_repo,
         lead_repo=lead_repo,
         crm_outbox_repo=crm_outbox_repo,
@@ -594,8 +614,11 @@ async def test_audio_message_calls_transcription_provider() -> None:
 
     assert result.processed is True
     assert len(transcription_provider.calls) == 1
-    assert transcription_provider.calls[0][0] == "https://cdn.example.com/audio.ogg"
-    assert event_repo.events[0].payload["transcription_text"] == "Texto transcrito"
+    assert transcription_provider.calls[0][0] == "dGVzdA=="
+    assert transcription_provider.calls[0][1] == "audio/ogg"
+    enriched_event = conversation_agent.calls[0][0]
+    assert enriched_event.kind is MessageKind.TEXT
+    assert "Texto transcrito" in str(enriched_event.text)
     assert len(conversation_agent.calls) == 1
 
 
@@ -608,7 +631,10 @@ async def test_audio_transcription_failure_sends_friendly_response() -> None:
     silenced_repo = FakeSilencedUserRepository()
     transcription_provider = FakeTranscriptionProvider(None)
     conversation_agent = FakeConversationAgent()
-    provider = FakeMessagingProvider(event=_build_event(MessageKind.AUDIO))
+    provider = FakeMessagingProvider(
+        event=_build_event(MessageKind.AUDIO),
+        audio_base64="dGVzdA==",
+    )
     handler = _build_handler(
         messaging_provider=provider,
         event_repo=event_repo,
@@ -624,7 +650,40 @@ async def test_audio_transcription_failure_sends_friendly_response() -> None:
 
     assert result.processed is True
     assert len(provider.sent_messages) == 1
-    assert "no pude escucharla bien" in provider.sent_messages[0]["text"].lower()
+    assert "no entendí" in provider.sent_messages[0]["text"].lower()
+    assert len(conversation_agent.calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_audio_base64_unavailable_sends_friendly_response() -> None:
+    event_repo = FakeConversationEventRepository()
+    lead_repo = FakeLeadProfileRepository()
+    crm_outbox_repo = FakeCRMOutboxRepository()
+    session_repo = FakeSessionRepository()
+    silenced_repo = FakeSilencedUserRepository()
+    transcription_provider = FakeTranscriptionProvider("Texto transcrito")
+    conversation_agent = FakeConversationAgent()
+    provider = FakeMessagingProvider(
+        event=_build_event(MessageKind.AUDIO),
+        audio_base64=None,
+    )
+    handler = _build_handler(
+        messaging_provider=provider,
+        event_repo=event_repo,
+        lead_repo=lead_repo,
+        crm_outbox_repo=crm_outbox_repo,
+        session_repo=session_repo,
+        silenced_repo=silenced_repo,
+        transcription_provider=transcription_provider,
+        conversation_agent=conversation_agent,
+    )
+
+    result = await handler.handle({"audio": True})
+
+    assert result.processed is True
+    assert len(provider.sent_messages) == 1
+    assert "no pude escuchar" in provider.sent_messages[0]["text"].lower()
+    assert len(transcription_provider.calls) == 0
     assert len(conversation_agent.calls) == 0
 
 
