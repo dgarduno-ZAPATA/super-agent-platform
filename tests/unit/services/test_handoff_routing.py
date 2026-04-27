@@ -120,8 +120,13 @@ class FakeSilencedUserRepository:
 
 
 class FakeTranscriptionProvider:
-    async def transcribe(self, audio_url: str, mime_type: str | None = None) -> str | None:
-        del audio_url, mime_type
+    async def transcribe(
+        self,
+        audio_url: str,
+        mime_type: str | None = None,
+        metadata: dict[str, object] | None = None,
+    ) -> str | None:
+        del audio_url, mime_type, metadata
         return "texto"
 
 

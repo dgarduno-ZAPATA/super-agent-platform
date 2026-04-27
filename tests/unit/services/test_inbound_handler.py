@@ -236,10 +236,15 @@ class FakeSilencedUserRepository:
 class FakeTranscriptionProvider:
     def __init__(self, transcription_text: str | None = "Transcribed audio") -> None:
         self.transcription_text = transcription_text
-        self.calls: list[tuple[str, str | None]] = []
+        self.calls: list[tuple[str, str | None, dict[str, object] | None]] = []
 
-    async def transcribe(self, audio_url: str, mime_type: str | None = None) -> str | None:
-        self.calls.append((audio_url, mime_type))
+    async def transcribe(
+        self,
+        audio_url: str,
+        mime_type: str | None = None,
+        metadata: dict[str, object] | None = None,
+    ) -> str | None:
+        self.calls.append((audio_url, mime_type, metadata))
         return self.transcription_text
 
 
