@@ -178,35 +178,51 @@ class SkillRegistry:
         if location_term:
             filters["location"] = location_term
         logger.info(
-            "inventory_query_start",
-            query=query_term,
+            "inventory_query_started",
+            lead_id=None,
+            correlation_id=None,
+            evento="inventory_query_started",
+            resultado="ok",
             filters=filters if filters else None,
         )
-        matches = (
-            self._inventory_provider.search_products(product_name)
-            if product_name and product_name.strip()
-            else self._inventory_provider.get_products()
-        )
+        try:
+            matches = (
+                self._inventory_provider.search_products(product_name)
+                if product_name and product_name.strip()
+                else self._inventory_provider.get_products()
+            )
+        except Exception:
+            logger.error(
+                "inventory_query_error",
+                lead_id=None,
+                correlation_id=None,
+                evento="inventory_query_error",
+                resultado="error",
+                exc_info=True,
+            )
+            raise
         if location_term:
             matches = self._filter_products_by_location(matches, location_term)
         fallback_used = bool(matches) and all(
             not isinstance(product.get("metadata"), dict) for product in matches
         )
-        if fallback_used:
+        if fallback_used or not matches:
             logger.warning(
-                "inventory_query_fallback",
-                query=query_term,
-                reason="sheet_unavailable",
-                fallback_count=len(matches),
+                "inventory_query_empty",
+                lead_id=None,
+                correlation_id=None,
+                evento="inventory_query_empty",
+                resultado="fallback",
             )
-        logger.info(
-            "inventory_query_result",
-            query=query_term,
-            location=location_term or None,
-            total_results=len(matches),
-            skus=[str(product.get("sku", "")) for product in matches[:5]],
-            used_fallback=fallback_used,
-        )
+        else:
+            logger.info(
+                "inventory_query_ok",
+                lead_id=None,
+                correlation_id=None,
+                evento="inventory_query_ok",
+                resultado="ok",
+                total_units=len(matches),
+            )
         if not matches:
             if query_term and location_term:
                 return (

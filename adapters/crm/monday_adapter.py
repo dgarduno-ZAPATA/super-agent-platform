@@ -115,6 +115,14 @@ class MondayCRMAdapter(CRMProvider):
         import json
 
         today = date.today().isoformat()
+        raw_lead_id = lead.attributes.get("lead_id")
+        lead_id = str(raw_lead_id).strip() if raw_lead_id is not None else None
+        if not lead_id:
+            lead_id = None
+        raw_correlation_id = lead.attributes.get("correlation_id")
+        correlation_id = str(raw_correlation_id).strip() if raw_correlation_id is not None else None
+        if not correlation_id:
+            correlation_id = None
         try:
             existing_id = await self._find_item_by_phone(lead.phone)
             resolved_name = self._resolve_lead_name(lead)
@@ -155,6 +163,14 @@ class MondayCRMAdapter(CRMProvider):
             col_vals = json.dumps(request_column_values)
 
             if existing_id:
+                logger.info(
+                    "monday_op_enqueued",
+                    lead_id=lead_id,
+                    correlation_id=correlation_id,
+                    evento="monday_op_enqueued",
+                    resultado="ok",
+                    operation="update_item",
+                )
                 query = """
                 mutation($item: ID!, $board: ID!, $cols: JSON!) {
                   change_multiple_column_values(
@@ -188,9 +204,25 @@ class MondayCRMAdapter(CRMProvider):
                 logger.info(
                     "monday_lead_upserted", item_id=existing_id, phone=lead.phone, action="updated"
                 )
+                logger.info(
+                    "monday_op_ok",
+                    lead_id=lead_id,
+                    correlation_id=correlation_id,
+                    evento="monday_op_ok",
+                    resultado="ok",
+                    item_id=existing_id,
+                )
                 return existing_id
 
             name = resolved_name
+            logger.info(
+                "monday_op_enqueued",
+                lead_id=lead_id,
+                correlation_id=correlation_id,
+                evento="monday_op_enqueued",
+                resultado="ok",
+                operation="create_item",
+            )
             query = """
             mutation($board: ID!, $name: String!, $cols: JSON!) {
               create_item(
@@ -231,8 +263,24 @@ class MondayCRMAdapter(CRMProvider):
             if not isinstance(item_id, str):
                 raise ValueError("Monday create_item response id is invalid")
             logger.info("monday_lead_upserted", item_id=item_id, phone=lead.phone, action="created")
+            logger.info(
+                "monday_op_ok",
+                lead_id=lead_id,
+                correlation_id=correlation_id,
+                evento="monday_op_ok",
+                resultado="ok",
+                item_id=item_id,
+            )
             return item_id
         except Exception as exc:
+            logger.error(
+                "monday_op_error",
+                lead_id=lead_id,
+                correlation_id=correlation_id,
+                evento="monday_op_error",
+                resultado="error",
+                exc_info=True,
+            )
             logger.error(
                 "monday_api_error",
                 method="upsert_lead",
@@ -274,6 +322,14 @@ class MondayCRMAdapter(CRMProvider):
             raise ValueError("monday item not found for stage change")
 
         try:
+            logger.info(
+                "monday_op_enqueued",
+                lead_id=lead_id,
+                correlation_id=None,
+                evento="monday_op_enqueued",
+                resultado="ok",
+                operation="change_stage",
+            )
             query = """
             mutation($item: ID!, $board: ID!, $cols: JSON!) {
               change_multiple_column_values(
@@ -298,7 +354,23 @@ class MondayCRMAdapter(CRMProvider):
                 new_stage=new_stage,
                 label=label,
             )
+            logger.info(
+                "monday_op_ok",
+                lead_id=lead_id,
+                correlation_id=None,
+                evento="monday_op_ok",
+                resultado="ok",
+                item_id=monday_id,
+            )
         except Exception as exc:
+            logger.error(
+                "monday_op_error",
+                lead_id=lead_id,
+                correlation_id=None,
+                evento="monday_op_error",
+                resultado="error",
+                exc_info=True,
+            )
             logger.error(
                 "monday_api_error",
                 method="change_stage",
