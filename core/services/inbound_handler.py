@@ -21,6 +21,7 @@ from core.domain.messaging import (
     UnsupportedEventTypeError,
 )
 from core.domain.session import Session
+from core.domain.slots import LeadSlots
 from core.fsm.actions import FSMActionDependencies, build_default_action_registry
 from core.fsm.engine import FSMEngine
 from core.fsm.guards import build_default_guard_registry
@@ -39,6 +40,7 @@ from core.ports.transcription_provider import TranscriptionProvider
 from core.services.conversation_agent import ConversationAgent
 from core.services.image_analysis_service import ImageAnalysisService
 from core.services.orchestrator import OrchestratorAgent
+from core.services.slot_extractor import SlotExtractor, slots_to_legacy_dict
 
 logger = structlog.get_logger("super_agent_platform.core.services.inbound_handler")
 
@@ -374,12 +376,37 @@ class InboundMessageHandler:
         lead_profile: LeadProfile,
         inbound_event: InboundEvent,
     ) -> LeadProfile:
+        lead_attrs = dict(lead_profile.attributes)
+        existing_slots = LeadSlots(
+            name=self._coerce_str(lead_profile.name or lead_attrs.get("name")),
+            city=self._coerce_str(lead_attrs.get("city") or lead_attrs.get("ciudad")),
+            vehicle_interest=self._coerce_str(
+                lead_attrs.get("vehicle_interest")
+                or lead_attrs.get("vehiculo_interes")
+                or lead_attrs.get("interes_modelo")
+            ),
+            budget=self._coerce_float(lead_attrs.get("budget")),
+            phone=self._coerce_str(lead_attrs.get("phone")),
+            contact_preference=self._coerce_str(lead_attrs.get("contact_preference")),
+        )
+        extraction = SlotExtractor().extract(inbound_event.text or "", existing_slots)
+        extracted = slots_to_legacy_dict(extraction.slots)
+        logger.info(
+            "slot_extraction_done",
+            lead_id=str(lead_profile.id),
+            slots_found=list(extracted.keys()),
+            extraction_method=extraction.extraction_method,
+        )
+
+        # Compatibilidad temporal: conserva hints legacy para campos no cubiertos.
         hints = self._extract_lead_hints(inbound_event.text)
         push_name = self._extract_push_name(inbound_event)
-        attributes = dict(lead_profile.attributes)
+        attributes = dict(lead_attrs)
         changed = False
         for key in ("city", "budget", "vehicle_interest"):
-            value = hints.get(key)
+            value = extracted.get(key)
+            if value is None:
+                value = hints.get(key)
             if value is None:
                 continue
             if attributes.get(key) != value:
@@ -387,7 +414,9 @@ class InboundMessageHandler:
                 changed = True
 
         name = lead_profile.name
-        hinted_name = hints.get("name")
+        hinted_name = extracted.get("name")
+        if hinted_name is None:
+            hinted_name = hints.get("name")
         if isinstance(hinted_name, str) and hinted_name:
             if name != hinted_name:
                 name = hinted_name
@@ -408,6 +437,28 @@ class InboundMessageHandler:
             }
         )
         return await self._lead_profile_repository.upsert_by_phone(updated)
+
+    @staticmethod
+    def _coerce_str(value: object) -> str | None:
+        if isinstance(value, str):
+            normalized = value.strip()
+            if normalized:
+                return normalized
+        return None
+
+    @staticmethod
+    def _coerce_float(value: object) -> float | None:
+        if isinstance(value, int | float):
+            return float(value)
+        if isinstance(value, str):
+            normalized = value.strip()
+            if not normalized:
+                return None
+            try:
+                return float(normalized.replace(",", ""))
+            except ValueError:
+                return None
+        return None
 
     async def _enqueue_lead_upsert(
         self,
