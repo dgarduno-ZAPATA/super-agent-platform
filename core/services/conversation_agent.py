@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from typing import TypeVar
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 import sentry_sdk
@@ -12,12 +13,58 @@ from core.domain.conversation_event import ConversationEvent
 from core.domain.llm import LLMResponse, ToolResult
 from core.domain.messaging import ChatMessage, InboundEvent
 from core.domain.session import Session
+from core.fsm.tool_policy import get_allowed_tools
 from core.ports.llm_provider import LLMProvider
 from core.ports.messaging_provider import MessagingProvider
 from core.ports.repositories import ConversationEventRepository
+from core.services.friction_detector import detect_friction
+from core.services.repetition_guard import is_repetition
 from core.services.skills import SkillExecutionContext, SkillRegistry
 
 logger = structlog.get_logger("super_agent_platform.core.services.conversation_agent")
+_ToolSchemaT = TypeVar("_ToolSchemaT")
+MAX_REGEN_ATTEMPTS = 2
+HANDOFF_STATES = {"handoff_pending", "handoff_active"}
+# TODO: mover a brand/ en Sprint B.
+HANDOFF_MSG = "Ya le avisé a un asesor, en breve te atiende."
+# TODO: mover a brand/ en Sprint B.
+FRICTION_ESCALATION_MSG = (
+    "Entiendo que no he sido de ayuda. Déjame conectarte con un asesor ahora mismo."
+)
+
+
+def _tool_schema_name(schema: object) -> str | None:
+    if isinstance(schema, dict):
+        function = schema.get("function")
+        if isinstance(function, dict):
+            name = function.get("name")
+            if isinstance(name, str):
+                return name
+    name = getattr(schema, "name", None)
+    if isinstance(name, str):
+        return name
+    return None
+
+
+def _filter_tool_schemas(
+    all_schemas: list[_ToolSchemaT],
+    allowed_tools: list[str] | None,
+) -> list[_ToolSchemaT]:
+    if allowed_tools is None:
+        return all_schemas
+    allowed = set(allowed_tools)
+    return [schema for schema in all_schemas if _tool_schema_name(schema) in allowed]
+
+
+def should_send_handoff_message(current_state: str, recent_bot_messages: list[str]) -> bool:
+    """
+    True si debe enviarse el mensaje neutro de espera.
+    False si debe haber silencio (ya se envió).
+    """
+    if current_state not in HANDOFF_STATES:
+        return False
+    already_sent = any(HANDOFF_MSG in msg for msg in recent_bot_messages[-2:])
+    return not already_sent
 
 
 class ConversationAgent:
@@ -58,6 +105,36 @@ class ConversationAgent:
                 messages = [self._build_user_message(event)]
             messages = self._trim_messages_for_budget(messages, max_total_chars=4000)
 
+            if session.current_state in HANDOFF_STATES:
+                recent_bot_messages = [
+                    msg.content
+                    for msg in messages
+                    if msg.role == "assistant" and isinstance(msg.content, str) and msg.content
+                ]
+                if should_send_handoff_message(session.current_state, recent_bot_messages):
+                    delivery = await self._messaging_provider.send_text(
+                        to=event.from_phone,
+                        text=HANDOFF_MSG,
+                        correlation_id=correlation_id,
+                    )
+                    await self._persist_outbound_event(
+                        conversation_id=conversation_id,
+                        lead_id=session.lead_id,
+                        text=HANDOFF_MSG,
+                        correlation_id=correlation_id,
+                        provider_message_id=delivery.message_id,
+                        state=session.current_state,
+                        llm_metadata={"source": "handoff_wait_message"},
+                    )
+                    logger.info(
+                        "conversation_agent_handoff_wait_sent",
+                        conversation_id=str(conversation_id),
+                        lead_id=str(session.lead_id),
+                        state=session.current_state,
+                        correlation_id=correlation_id,
+                    )
+                return
+
             if self._is_photo_only_request(event.text):
                 await self._handle_photo_only_request(
                     event=event,
@@ -71,19 +148,85 @@ class ConversationAgent:
             if session.current_state == "catalog_navigation":
                 inventory_context = self._build_catalog_inventory_prompt_context(event.text)
                 system_prompt = f"{system_prompt}\n\n{inventory_context}"
-            llm_response = await self._run_tool_calling_loop(
-                messages=messages[-12:],
-                system_prompt=system_prompt,
-                context=SkillExecutionContext(
-                    phone=event.from_phone,
-                    correlation_id=correlation_id,
-                ),
-            )
-            response_text = self._compress_response_text(
-                llm_response.content,
-                inbound_text=event.text,
-                history=history,
-            )
+            allowed = get_allowed_tools(session.current_state)
+            previous_bot_texts = [
+                msg.content
+                for msg in messages
+                if msg.role == "assistant" and isinstance(msg.content, str) and msg.content
+            ]
+            attempt = 0
+            while True:
+                llm_response = await self._run_tool_calling_loop(
+                    messages=messages[-12:],
+                    system_prompt=system_prompt,
+                    context=SkillExecutionContext(
+                        phone=event.from_phone,
+                        correlation_id=correlation_id,
+                    ),
+                    allowed_tools=allowed,
+                )
+                response_text = self._compress_response_text(
+                    llm_response.content,
+                    inbound_text=event.text,
+                    history=history,
+                )
+                if not is_repetition(response_text, previous_bot_texts):
+                    break
+                attempt += 1
+                if attempt <= MAX_REGEN_ATTEMPTS:
+                    logger.info(
+                        "repetition_regenerating",
+                        attempt=attempt,
+                        lead_id=str(session.lead_id),
+                    )
+                    continue
+                logger.warning(
+                    "repetition_max_attempts_reached",
+                    lead_id=str(session.lead_id),
+                )
+                break
+            current_client_message = (event.text or "").strip()
+            recent_client_messages = [
+                msg.content
+                for msg in messages
+                if msg.role == "user" and isinstance(msg.content, str) and msg.content
+            ]
+            if (
+                current_client_message
+                and recent_client_messages
+                and recent_client_messages[-1] == current_client_message
+            ):
+                recent_client_messages = recent_client_messages[:-1]
+
+            recent_states = [
+                state
+                for item in history
+                if isinstance((state := item.payload.get("state")), str) and state.strip()
+            ]
+            if not recent_states:
+                observed_turns = len(recent_client_messages) + (1 if current_client_message else 0)
+                recent_states = [session.current_state] * observed_turns
+
+            outbound_llm_metadata = dict(llm_response.metadata)
+            if detect_friction(
+                current_client_message=current_client_message,
+                recent_client_messages=recent_client_messages,
+                current_state=session.current_state,
+                recent_states=recent_states,
+            ):
+                response_text = FRICTION_ESCALATION_MSG
+                outbound_llm_metadata["friction_escalation"] = True
+                outbound_llm_metadata["handoff_triggered"] = False
+                logger.warning(
+                    "friction_escalation_triggered",
+                    lead_id=str(session.lead_id),
+                    current_state=session.current_state,
+                    handoff_triggered=False,
+                    reason=(
+                        "conversation_agent_no_handoff_dependency;"
+                        "handoff must be triggered upstream"
+                    ),
+                )
 
             delivery = await self._messaging_provider.send_text(
                 to=event.from_phone,
@@ -97,7 +240,7 @@ class ConversationAgent:
                 correlation_id=correlation_id,
                 provider_message_id=delivery.message_id,
                 state=session.current_state,
-                llm_metadata=llm_response.metadata,
+                llm_metadata=outbound_llm_metadata,
             )
             logger.info(
                 "conversation_agent_response_sent",
@@ -425,14 +568,26 @@ class ConversationAgent:
         messages: list[ChatMessage],
         system_prompt: str,
         context: SkillExecutionContext,
+        allowed_tools: list[str] | None = None,
     ) -> LLMResponse:
         working_messages = list(messages)
         max_rounds = 3
         for _ in range(max_rounds):
+            all_schemas = self._skill_registry.get_tool_schemas()
+            schemas_to_use = _filter_tool_schemas(
+                all_schemas=all_schemas,
+                allowed_tools=allowed_tools,
+            )
+            if allowed_tools is not None:
+                logger.debug(
+                    "tool_calling_filtered",
+                    allowed=allowed_tools,
+                    available=[_tool_schema_name(schema) for schema in schemas_to_use],
+                )
             llm_response = await self._llm_provider.complete(
                 messages=working_messages,
                 system=system_prompt,
-                tools=self._skill_registry.get_tool_schemas(),
+                tools=schemas_to_use,
                 temperature=0.2,
             )
             if not llm_response.tool_calls:

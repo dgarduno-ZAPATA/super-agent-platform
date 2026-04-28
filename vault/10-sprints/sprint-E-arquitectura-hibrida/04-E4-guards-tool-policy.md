@@ -1,0 +1,41 @@
+---
+# [Sprint E · Mini-prompt E4] Reglas comerciales + allowed_tools por estado FSM
+
+**Fecha:** 2026-04-28 · **Estado:** ? verificado · ? cerrado
+
+## Objetivo
+Conectar `allowed_tools` por estado FSM en `ConversationAgent` y endurecer guards comerciales en FSM.
+
+## Diagnóstico previo
+- `brand/fsm.yaml` define 12 estados con transiciones/guards declarativos.
+- `core/fsm/guards.py` tenía guards base (`always`, `has_phone_number`, `is_not_silenced`, `opt_out_detected`, `has_name`, `user_requested_document`) y faltaban guards de handoff explícito/vehicle_interest/budget.
+- `ConversationAgent.respond()` ya conoce `session.current_state` y llama `_run_tool_calling_loop(...)`.
+- `_run_tool_calling_loop` ya soportaba `allowed_tools` desde E3-b.
+- Estructura compatible para agregar `tool_policy` y nuevos guards sin refactor mayor.
+
+## Estados FSM y cobertura de tools
+Se agregó `core/fsm/tool_policy.py` con cobertura explícita para los 12 estados de `brand/fsm.yaml`.
+`test_all_states_in_fsm_yaml_covered` valida que no quede ningún estado sin política.
+
+## Cambios aplicados
+| Archivo | Tipo | Resumen |
+|---------|------|---------|
+| core/fsm/tool_policy.py | add | Mapa canónico `FSM_TOOL_POLICY` + `get_allowed_tools()` |
+| core/services/conversation_agent.py | edit | `respond()` obtiene `allowed = get_allowed_tools(session.current_state)` y lo pasa a `_run_tool_calling_loop` |
+| core/fsm/guards.py | edit | Nuevos guards: `user_requested_handoff`, `has_vehicle_interest`, `has_budget` + registro en guard registry |
+| tests/unit/test_tool_policy.py | add | 4 tests (incluye cobertura total de estados en fsm.yaml) |
+| tests/unit/test_guards.py | add | 9 tests para nuevos guards |
+
+## CI
+- `docker compose exec app pytest -v` ? 220 passed
+- `docker compose exec app ruff check . --fix` ? All checks passed
+- `docker compose exec app black .` ? 183 files left unchanged
+- `docker compose exec app mypy core/` ? Success (59 source files)
+
+## Riesgos / pendientes
+- `user_requested_handoff_guard` es lexical; puede requerir ajuste fino de keywords en producción para minimizar falsos positivos.
+- `has_vehicle_interest_guard` y `has_budget_guard` hoy leen contexto plano; si en futuros flujos llega todo anidado, se necesitará mapper explícito en el contexto FSM.
+
+## Siguiente paso sugerido
+- E5: implementar anti-repetición por Jaccard (umbral 0.75) con regeneración controlada y tests unitarios de similitud.
+---
