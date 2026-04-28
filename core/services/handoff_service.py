@@ -23,37 +23,95 @@ class HandoffService:
 
     async def take_control(self, lead_id: UUID) -> Session:
         session = await self._get_session_by_lead_id(lead_id)
-        await self._session_repository.update_state(
-            session_id=session.id,
-            new_state="handoff_active",
-            context=dict(session.context),
-        )
-        updated_session = await self._get_session_by_lead_id(lead_id)
-        await self._append_system_event(updated_session, "system_agent_took_control")
-        logger.info(
-            "handoff_take_control_applied",
-            lead_id=str(updated_session.lead_id),
-            session_id=str(updated_session.id),
-            state=updated_session.current_state,
-        )
-        return updated_session
+        correlation_id = str(session.id)
+        try:
+            logger.info(
+                "handoff_started",
+                lead_id=str(session.lead_id),
+                correlation_id=correlation_id,
+                evento="handoff_started",
+                resultado="ok",
+                branch=None,
+            )
+            await self._session_repository.update_state(
+                session_id=session.id,
+                new_state="handoff_active",
+                context=dict(session.context),
+            )
+            updated_session = await self._get_session_by_lead_id(lead_id)
+            await self._append_system_event(updated_session, "system_agent_took_control")
+            logger.info(
+                "handoff_ok",
+                lead_id=str(updated_session.lead_id),
+                correlation_id=correlation_id,
+                evento="handoff_ok",
+                resultado="ok",
+                branch=None,
+            )
+            logger.info(
+                "handoff_take_control_applied",
+                lead_id=str(updated_session.lead_id),
+                session_id=str(updated_session.id),
+                state=updated_session.current_state,
+            )
+            return updated_session
+        except Exception:
+            logger.error(
+                "handoff_error",
+                lead_id=str(session.lead_id),
+                correlation_id=correlation_id,
+                evento="handoff_error",
+                resultado="error",
+                branch=None,
+                exc_info=True,
+            )
+            raise
 
     async def release_control(self, lead_id: UUID) -> Session:
         session = await self._get_session_by_lead_id(lead_id)
-        await self._session_repository.update_state(
-            session_id=session.id,
-            new_state="idle",
-            context=dict(session.context),
-        )
-        updated_session = await self._get_session_by_lead_id(lead_id)
-        await self._append_system_event(updated_session, "system_agent_released_control")
-        logger.info(
-            "handoff_release_control_applied",
-            lead_id=str(updated_session.lead_id),
-            session_id=str(updated_session.id),
-            state=updated_session.current_state,
-        )
-        return updated_session
+        correlation_id = str(session.id)
+        try:
+            logger.info(
+                "handoff_started",
+                lead_id=str(session.lead_id),
+                correlation_id=correlation_id,
+                evento="handoff_started",
+                resultado="ok",
+                branch=None,
+            )
+            await self._session_repository.update_state(
+                session_id=session.id,
+                new_state="idle",
+                context=dict(session.context),
+            )
+            updated_session = await self._get_session_by_lead_id(lead_id)
+            await self._append_system_event(updated_session, "system_agent_released_control")
+            logger.info(
+                "handoff_ok",
+                lead_id=str(updated_session.lead_id),
+                correlation_id=correlation_id,
+                evento="handoff_ok",
+                resultado="ok",
+                branch=None,
+            )
+            logger.info(
+                "handoff_release_control_applied",
+                lead_id=str(updated_session.lead_id),
+                session_id=str(updated_session.id),
+                state=updated_session.current_state,
+            )
+            return updated_session
+        except Exception:
+            logger.error(
+                "handoff_error",
+                lead_id=str(session.lead_id),
+                correlation_id=correlation_id,
+                evento="handoff_error",
+                resultado="error",
+                branch=None,
+                exc_info=True,
+            )
+            raise
 
     async def _get_session_by_lead_id(self, lead_id: UUID) -> Session:
         session = await self._session_repository.get_by_lead_id(lead_id)

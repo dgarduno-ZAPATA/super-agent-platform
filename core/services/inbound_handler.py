@@ -25,6 +25,7 @@ from core.fsm.actions import FSMActionDependencies, build_default_action_registr
 from core.fsm.engine import FSMEngine
 from core.fsm.guards import build_default_guard_registry
 from core.fsm.schema import FSMConfig
+from core.observability.logging import mask_pii
 from core.ports.branch_provider import BranchProvider
 from core.ports.messaging_provider import MessagingProvider
 from core.ports.repositories import (
@@ -591,43 +592,71 @@ class InboundMessageHandler:
         response_text: str,
     ) -> None:
         correlation_id = inbound_event.message_id
+        phone_masked = mask_pii(inbound_event.from_phone, "phone")
         try:
+            logger.info(
+                "whatsapp_send_started",
+                lead_id=None,
+                correlation_id=correlation_id,
+                evento="whatsapp_send_started",
+                resultado="ok",
+                phone_masked=phone_masked,
+            )
             await self._messaging_provider.send_text(
                 to=inbound_event.from_phone,
                 text=response_text,
                 correlation_id=correlation_id,
             )
             logger.info(
-                "handoff_ack_sent",
-                phone=inbound_event.from_phone,
+                "whatsapp_send_ok",
+                lead_id=None,
                 correlation_id=correlation_id,
+                evento="whatsapp_send_ok",
+                resultado="ok",
             )
         except Exception:
-            logger.exception(
-                "handoff_ack_send_failed",
-                phone=inbound_event.from_phone,
+            logger.error(
+                "whatsapp_send_error",
+                lead_id=None,
                 correlation_id=correlation_id,
+                evento="whatsapp_send_error",
+                resultado="error",
+                exc_info=True,
             )
 
     async def _send_unsupported_message(self, inbound_event: InboundEvent) -> None:
         correlation_id = inbound_event.message_id
         text = "Recibi tu mensaje pero no puedo procesar ese tipo de contenido todavia."
+        phone_masked = mask_pii(inbound_event.from_phone, "phone")
         try:
+            logger.info(
+                "whatsapp_send_started",
+                lead_id=None,
+                correlation_id=correlation_id,
+                evento="whatsapp_send_started",
+                resultado="ok",
+                phone_masked=phone_masked,
+            )
             await self._messaging_provider.send_text(
                 to=inbound_event.from_phone,
                 text=text,
                 correlation_id=correlation_id,
             )
             logger.info(
-                "unsupported_message_response_sent",
-                phone=inbound_event.from_phone,
+                "whatsapp_send_ok",
+                lead_id=None,
                 correlation_id=correlation_id,
+                evento="whatsapp_send_ok",
+                resultado="ok",
             )
         except Exception:
-            logger.exception(
-                "unsupported_message_response_failed",
-                phone=inbound_event.from_phone,
+            logger.error(
+                "whatsapp_send_error",
+                lead_id=None,
                 correlation_id=correlation_id,
+                evento="whatsapp_send_error",
+                resultado="error",
+                exc_info=True,
             )
 
     def _resolve_session_state(self, session_state: str) -> str:
@@ -760,17 +789,36 @@ class InboundMessageHandler:
         response_text: str,
     ) -> None:
         correlation_id = inbound_event.message_id
+        phone_masked = mask_pii(inbound_event.from_phone, "phone")
         try:
+            logger.info(
+                "whatsapp_send_started",
+                lead_id=None,
+                correlation_id=correlation_id,
+                evento="whatsapp_send_started",
+                resultado="ok",
+                phone_masked=phone_masked,
+            )
             await self._messaging_provider.send_text(
                 to=inbound_event.from_phone,
                 text=response_text,
                 correlation_id=correlation_id,
             )
-        except Exception:
-            logger.exception(
-                "media_processing_failure_response_failed",
-                phone=inbound_event.from_phone,
+            logger.info(
+                "whatsapp_send_ok",
+                lead_id=None,
                 correlation_id=correlation_id,
+                evento="whatsapp_send_ok",
+                resultado="ok",
+            )
+        except Exception:
+            logger.error(
+                "whatsapp_send_error",
+                lead_id=None,
+                correlation_id=correlation_id,
+                evento="whatsapp_send_error",
+                resultado="error",
+                exc_info=True,
             )
 
     async def _route_handoff_to_branch(
@@ -797,17 +845,34 @@ class InboundMessageHandler:
         )
         for phone in branch.phones:
             try:
+                logger.info(
+                    "whatsapp_send_started",
+                    lead_id=str(lead_profile.id),
+                    correlation_id=inbound_event.message_id,
+                    evento="whatsapp_send_started",
+                    resultado="ok",
+                    phone_masked=mask_pii(phone, "phone"),
+                )
                 await self._messaging_provider.send_text(
                     to=phone,
                     text=message,
                     correlation_id=inbound_event.message_id,
                 )
-            except Exception:
-                logger.exception(
-                    "handoff_routing_send_failed",
+                logger.info(
+                    "whatsapp_send_ok",
                     lead_id=str(lead_profile.id),
-                    branch_key=branch.sucursal_key,
-                    branch_phone=phone,
+                    correlation_id=inbound_event.message_id,
+                    evento="whatsapp_send_ok",
+                    resultado="ok",
+                )
+            except Exception:
+                logger.error(
+                    "whatsapp_send_error",
+                    lead_id=str(lead_profile.id),
+                    correlation_id=inbound_event.message_id,
+                    evento="whatsapp_send_error",
+                    resultado="error",
+                    exc_info=True,
                 )
 
     async def _build_handoff_notification(
