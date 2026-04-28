@@ -35,6 +35,13 @@ class InventoryColumnsConfig(StrictConfigModel):
     image_urls: str = "Imagenes Completas"
 
 
+class SystemMessagesConfig(StrictConfigModel):
+    handoff_waiting: str = "Ya le avisé a un asesor, en breve te atiende."
+    friction_escalation: str = (
+        "Entiendo que no he sido de ayuda. " "Déjame conectarte con un asesor ahora mismo."
+    )
+
+
 class BrandConfig(StrictConfigModel):
     name: str
     slug: str = "selectrucks-zapata"
@@ -47,6 +54,7 @@ class BrandConfig(StrictConfigModel):
     support_phone: str = ""
     admin_title: str = "Panel de Raúl"
     inventory_columns: InventoryColumnsConfig = Field(default_factory=InventoryColumnsConfig)
+    system_messages: SystemMessagesConfig = Field(default_factory=SystemMessagesConfig)
 
 
 class FunnelStateConfig(StrictConfigModel):

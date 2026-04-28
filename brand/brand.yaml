@@ -26,3 +26,10 @@ inventory_columns:
   promotion: "Promoción"
   image_url: "Imagen Portada"
   image_urls: "Imagenes Completas"
+
+# Mensajes de sistema del bot (internos, no editables por cliente)
+system_messages:
+  handoff_waiting: "Ya le avisé a un asesor, en breve te atiende."
+  friction_escalation: >-
+    Entiendo que no he sido de ayuda.
+    Déjame conectarte con un asesor ahora mismo.

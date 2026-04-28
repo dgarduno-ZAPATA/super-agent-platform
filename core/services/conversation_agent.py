@@ -25,12 +25,6 @@ logger = structlog.get_logger("super_agent_platform.core.services.conversation_a
 _ToolSchemaT = TypeVar("_ToolSchemaT")
 MAX_REGEN_ATTEMPTS = 2
 HANDOFF_STATES = {"handoff_pending", "handoff_active"}
-# TODO: mover a brand/ en Sprint B.
-HANDOFF_MSG = "Ya le avisé a un asesor, en breve te atiende."
-# TODO: mover a brand/ en Sprint B.
-FRICTION_ESCALATION_MSG = (
-    "Entiendo que no he sido de ayuda. Déjame conectarte con un asesor ahora mismo."
-)
 
 
 def _tool_schema_name(schema: object) -> str | None:
@@ -56,14 +50,18 @@ def _filter_tool_schemas(
     return [schema for schema in all_schemas if _tool_schema_name(schema) in allowed]
 
 
-def should_send_handoff_message(current_state: str, recent_bot_messages: list[str]) -> bool:
+def should_send_handoff_message(
+    current_state: str,
+    recent_bot_messages: list[str],
+    handoff_msg: str,
+) -> bool:
     """
     True si debe enviarse el mensaje neutro de espera.
     False si debe haber silencio (ya se envió).
     """
     if current_state not in HANDOFF_STATES:
         return False
-    already_sent = any(HANDOFF_MSG in msg for msg in recent_bot_messages[-2:])
+    already_sent = any(handoff_msg in msg for msg in recent_bot_messages[-2:])
     return not already_sent
 
 
@@ -104,6 +102,8 @@ class ConversationAgent:
             if not messages:
                 messages = [self._build_user_message(event)]
             messages = self._trim_messages_for_budget(messages, max_total_chars=4000)
+            handoff_msg = self._brand.brand.system_messages.handoff_waiting
+            friction_msg = self._brand.brand.system_messages.friction_escalation
 
             if session.current_state in HANDOFF_STATES:
                 recent_bot_messages = [
@@ -111,16 +111,20 @@ class ConversationAgent:
                     for msg in messages
                     if msg.role == "assistant" and isinstance(msg.content, str) and msg.content
                 ]
-                if should_send_handoff_message(session.current_state, recent_bot_messages):
+                if should_send_handoff_message(
+                    session.current_state,
+                    recent_bot_messages,
+                    handoff_msg,
+                ):
                     delivery = await self._messaging_provider.send_text(
                         to=event.from_phone,
-                        text=HANDOFF_MSG,
+                        text=handoff_msg,
                         correlation_id=correlation_id,
                     )
                     await self._persist_outbound_event(
                         conversation_id=conversation_id,
                         lead_id=session.lead_id,
-                        text=HANDOFF_MSG,
+                        text=handoff_msg,
                         correlation_id=correlation_id,
                         provider_message_id=delivery.message_id,
                         state=session.current_state,
@@ -214,7 +218,7 @@ class ConversationAgent:
                 current_state=session.current_state,
                 recent_states=recent_states,
             ):
-                response_text = FRICTION_ESCALATION_MSG
+                response_text = friction_msg
                 outbound_llm_metadata["friction_escalation"] = True
                 outbound_llm_metadata["handoff_triggered"] = False
                 logger.warning(

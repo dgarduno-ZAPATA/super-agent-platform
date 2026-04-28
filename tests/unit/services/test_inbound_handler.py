@@ -970,3 +970,26 @@ async def test_accumulation_debounces_rapid_messages_and_responds_once() -> None
     statuses = {first.status, second.status}
     assert statuses == {"deferred_for_accumulation", "processed"}
     assert len(conversation_agent.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_conversation_log_port_none_safe() -> None:
+    handler = _build_handler(
+        messaging_provider=FakeMessagingProvider(event=_build_event(MessageKind.TEXT)),
+        event_repo=FakeConversationEventRepository(),
+        lead_repo=FakeLeadProfileRepository(),
+        crm_outbox_repo=FakeCRMOutboxRepository(),
+        session_repo=FakeSessionRepository(),
+        silenced_repo=FakeSilencedUserRepository(),
+        transcription_provider=FakeTranscriptionProvider(),
+        conversation_agent=FakeConversationAgent(),
+    )
+
+    await handler._log_conversation_turn(
+        lead_id=UUID("00000000-0000-0000-0000-000000000321"),
+        phone="5214421234567",
+        last_state="greeting",
+        last_intent="greeting",
+        summary="",
+        correlation_id="corr-001",
+    )

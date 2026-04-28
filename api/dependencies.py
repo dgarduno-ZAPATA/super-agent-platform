@@ -1,3 +1,4 @@
+import os
 from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, Request, status
@@ -29,6 +30,7 @@ from core.brand.schema import Brand
 from core.config import get_settings
 from core.fsm.schema import FSMConfig
 from core.ports.branch_provider import BranchProvider
+from core.ports.conversation_log import ConversationLogPort
 from core.ports.crm_provider import CRMProvider
 from core.ports.inventory_provider import InventoryProvider
 from core.ports.knowledge_provider import KnowledgeProvider
@@ -56,6 +58,14 @@ from core.services.login_attempt_service import LoginAttemptService
 from core.services.orchestrator import OrchestratorAgent
 from core.services.replay_engine import ReplayEngine
 from core.services.skills import SkillRegistry
+
+
+def get_conversation_log() -> ConversationLogPort | None:
+    if not os.getenv("CONVERSATION_LOG_SHEET_URL", "").strip():
+        return None
+    from adapters.log.gspread_log_adapter import GspreadLogAdapter
+
+    return GspreadLogAdapter()
 
 
 def get_brand(request: Request) -> Brand:
@@ -397,6 +407,7 @@ def get_inbound_message_handler(
     fsm_config: Annotated[FSMConfig, Depends(get_fsm_config)],
     branch_provider: Annotated[BranchProvider, Depends(get_branch_provider)],
     brand: Annotated[Brand, Depends(get_brand)],
+    conversation_log: Annotated[ConversationLogPort | None, Depends(get_conversation_log)],
 ) -> InboundMessageHandler:
     settings = get_settings()
     return InboundMessageHandler(
@@ -413,5 +424,6 @@ def get_inbound_message_handler(
         fsm_config=fsm_config,
         branch_provider=branch_provider,
         brand=brand,
+        conversation_log=conversation_log,
         message_accumulation_seconds=settings.message_accumulation_seconds,
     )
