@@ -28,6 +28,7 @@ from core.fsm.guards import build_default_guard_registry
 from core.fsm.schema import FSMConfig
 from core.observability.logging import mask_pii
 from core.ports.branch_provider import BranchProvider
+from core.ports.conversation_log import ConversationLogPort
 from core.ports.messaging_provider import MessagingProvider
 from core.ports.repositories import (
     ConversationEventRepository,
@@ -43,6 +44,11 @@ from core.services.orchestrator import OrchestratorAgent
 from core.services.slot_extractor import SlotExtractor, slots_to_legacy_dict
 
 logger = structlog.get_logger("super_agent_platform.core.services.inbound_handler")
+
+DEBOUNCE_SECONDS = 8.0
+_debounce_tasks: dict[str, asyncio.Task[bool]] = {}
+_debounce_latest: dict[str, InboundEvent] = {}
+_debounce_lock = asyncio.Lock()
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +77,7 @@ class InboundMessageHandler:
         fsm_config: FSMConfig,
         branch_provider: BranchProvider,
         brand: Brand | None = None,
+        conversation_log: ConversationLogPort | None = None,
         message_accumulation_seconds: float = 0.0,
     ) -> None:
         self._messaging_provider = messaging_provider
@@ -86,7 +93,10 @@ class InboundMessageHandler:
         self._fsm_config = fsm_config
         self._branch_provider = branch_provider
         self._brand = brand
-        self._message_accumulation_seconds = max(0.0, float(message_accumulation_seconds))
+        self._conversation_log = conversation_log
+        self._message_accumulation_seconds = (
+            DEBOUNCE_SECONDS if float(message_accumulation_seconds) > 0 else 0.0
+        )
         self._guard_registry = build_default_guard_registry()
         self._action_registry = build_default_action_registry(
             FSMActionDependencies(
@@ -126,6 +136,7 @@ class InboundMessageHandler:
         conversation_event = ConversationEvent(
             id=uuid4(),
             conversation_id=conversation_id,
+            # TODO: lead_id no disponible en este scope (Sprint E refactor)
             lead_id=None,
             event_type=enriched_inbound_event.event_type,
             payload=event_payload,
@@ -151,8 +162,8 @@ class InboundMessageHandler:
             )
 
         if await self._should_defer_due_newer_inbound(
-            conversation_id=conversation_id,
-            current_message_id=enriched_inbound_event.message_id,
+            jid=enriched_inbound_event.from_phone,
+            event=enriched_inbound_event,
         ):
             logger.info(
                 "inbound_message_deferred_for_accumulation",
@@ -208,6 +219,15 @@ class InboundMessageHandler:
             await self._send_media_processing_failure_response(
                 inbound_event=enriched_inbound_event,
                 response_text=media_failure_response,
+                lead_id=lead_profile.id,
+            )
+            await self._log_conversation_turn(
+                lead_id=lead_profile.id,
+                phone=enriched_inbound_event.from_phone,
+                last_state=session.current_state,
+                last_intent="media_processing_fallback",
+                summary="Fallback por error al procesar media",
+                correlation_id=enriched_inbound_event.message_id,
             )
             logger.info(
                 "inbound_webhook_processed_media_fallback",
@@ -303,6 +323,7 @@ class InboundMessageHandler:
                     classification.metadata.get("handoff_response_text")
                     or "Un asesor te contactara pronto."
                 ),
+                lead_id=lead_profile.id,
             )
             await self._route_handoff_to_branch(
                 inbound_event=enriched_inbound_event,
@@ -315,7 +336,7 @@ class InboundMessageHandler:
                 inbound_event=enriched_inbound_event,
             )
         elif classification.intent == "unsupported":
-            await self._send_unsupported_message(enriched_inbound_event)
+            await self._send_unsupported_message(enriched_inbound_event, lead_id=lead_profile.id)
         else:
             conversation_history = await self._build_recent_conversation_history(
                 conversation_id=conversation_id,
@@ -327,6 +348,21 @@ class InboundMessageHandler:
                 conversation_history=conversation_history,
             )
 
+        vehicle_interest = self._extract_handoff_field(
+            lead_profile=lead_profile,
+            session=updated_session,
+            keys=["vehiculo_interes", "vehicle_interest", "interes_modelo"],
+        )
+        await self._log_conversation_turn(
+            lead_id=lead_profile.id,
+            phone=enriched_inbound_event.from_phone,
+            last_state=updated_session.current_state,
+            last_intent=classification.intent,
+            summary=(
+                f"Interes: {vehicle_interest or 'N/A'} | " f"FSM: {updated_session.current_state}"
+            ),
+            correlation_id=enriched_inbound_event.message_id,
+        )
         logger.info(
             "inbound_webhook_processed",
             conversation_id=str(conversation_id),
@@ -641,13 +677,14 @@ class InboundMessageHandler:
         self,
         inbound_event: InboundEvent,
         response_text: str,
+        lead_id: UUID,
     ) -> None:
         correlation_id = inbound_event.message_id
         phone_masked = mask_pii(inbound_event.from_phone, "phone")
         try:
             logger.info(
                 "whatsapp_send_started",
-                lead_id=None,
+                lead_id=str(lead_id),
                 correlation_id=correlation_id,
                 evento="whatsapp_send_started",
                 resultado="ok",
@@ -660,7 +697,7 @@ class InboundMessageHandler:
             )
             logger.info(
                 "whatsapp_send_ok",
-                lead_id=None,
+                lead_id=str(lead_id),
                 correlation_id=correlation_id,
                 evento="whatsapp_send_ok",
                 resultado="ok",
@@ -668,21 +705,21 @@ class InboundMessageHandler:
         except Exception:
             logger.error(
                 "whatsapp_send_error",
-                lead_id=None,
+                lead_id=str(lead_id),
                 correlation_id=correlation_id,
                 evento="whatsapp_send_error",
                 resultado="error",
                 exc_info=True,
             )
 
-    async def _send_unsupported_message(self, inbound_event: InboundEvent) -> None:
+    async def _send_unsupported_message(self, inbound_event: InboundEvent, lead_id: UUID) -> None:
         correlation_id = inbound_event.message_id
         text = "Recibi tu mensaje pero no puedo procesar ese tipo de contenido todavia."
         phone_masked = mask_pii(inbound_event.from_phone, "phone")
         try:
             logger.info(
                 "whatsapp_send_started",
-                lead_id=None,
+                lead_id=str(lead_id),
                 correlation_id=correlation_id,
                 evento="whatsapp_send_started",
                 resultado="ok",
@@ -695,7 +732,7 @@ class InboundMessageHandler:
             )
             logger.info(
                 "whatsapp_send_ok",
-                lead_id=None,
+                lead_id=str(lead_id),
                 correlation_id=correlation_id,
                 evento="whatsapp_send_ok",
                 resultado="ok",
@@ -703,7 +740,7 @@ class InboundMessageHandler:
         except Exception:
             logger.error(
                 "whatsapp_send_error",
-                lead_id=None,
+                lead_id=str(lead_id),
                 correlation_id=correlation_id,
                 evento="whatsapp_send_error",
                 resultado="error",
@@ -838,13 +875,14 @@ class InboundMessageHandler:
         self,
         inbound_event: InboundEvent,
         response_text: str,
+        lead_id: UUID,
     ) -> None:
         correlation_id = inbound_event.message_id
         phone_masked = mask_pii(inbound_event.from_phone, "phone")
         try:
             logger.info(
                 "whatsapp_send_started",
-                lead_id=None,
+                lead_id=str(lead_id),
                 correlation_id=correlation_id,
                 evento="whatsapp_send_started",
                 resultado="ok",
@@ -857,7 +895,7 @@ class InboundMessageHandler:
             )
             logger.info(
                 "whatsapp_send_ok",
-                lead_id=None,
+                lead_id=str(lead_id),
                 correlation_id=correlation_id,
                 evento="whatsapp_send_ok",
                 resultado="ok",
@@ -865,12 +903,37 @@ class InboundMessageHandler:
         except Exception:
             logger.error(
                 "whatsapp_send_error",
-                lead_id=None,
+                lead_id=str(lead_id),
                 correlation_id=correlation_id,
                 evento="whatsapp_send_error",
                 resultado="error",
                 exc_info=True,
             )
+
+    async def _log_conversation_turn(
+        self,
+        lead_id: UUID,
+        phone: str,
+        last_state: str,
+        last_intent: str,
+        summary: str,
+        correlation_id: str,
+    ) -> None:
+        if self._conversation_log is None:
+            return
+        phone_masked = f"{phone[:4]}***" if phone else "???"
+        try:
+            await self._conversation_log.log_turn(
+                lead_id=str(lead_id),
+                phone_masked=phone_masked,
+                last_state=last_state,
+                last_intent=last_intent,
+                summary=summary,
+                updated_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                correlation_id=correlation_id,
+            )
+        except Exception as exc:
+            logger.warning("conversation_log_call_failed", reason=str(exc))
 
     async def _route_handoff_to_branch(
         self,
@@ -1094,19 +1157,68 @@ class InboundMessageHandler:
 
     async def _should_defer_due_newer_inbound(
         self,
-        conversation_id: UUID,
-        current_message_id: str,
+        jid: str,
+        event: InboundEvent,
     ) -> bool:
         if self._message_accumulation_seconds <= 0:
             return False
+        if event.event_type != "inbound_message":
+            return False
+        if isinstance(event.text, str) and event.text.lstrip().startswith("/"):
+            return False
 
+        should_process = await self._handle_with_debounce(jid=jid, event=event)
+        return not should_process
+
+    async def _handle_with_debounce(self, jid: str, event: InboundEvent) -> bool:
+        """
+        Encola el evento con debouncing de DEBOUNCE_SECONDS.
+        Retorna True si este evento es el ultimo de la rafaga y debe procesarse.
+        """
+        async with _debounce_lock:
+            _debounce_latest[jid] = event
+
+            existing = _debounce_tasks.get(jid)
+            if existing is not None and not existing.done():
+                existing.cancel()
+                logger.debug(
+                    "debounce_cancelled",
+                    jid=jid[:4] + "***",
+                    reason="new_message_arrived",
+                )
+
+            task = asyncio.create_task(self._debounce_execute(jid, event.message_id))
+            _debounce_tasks[jid] = task
+
+        try:
+            return await task
+        except asyncio.CancelledError:
+            return False
+
+    async def _debounce_execute(self, jid: str, message_id: str) -> bool:
+        """
+        Espera DEBOUNCE_SECONDS y valida si el mensaje actual sigue siendo el ultimo.
+        """
         await asyncio.sleep(self._message_accumulation_seconds)
-        events = await self._conversation_event_repository.list_by_conversation(
-            conversation_id=conversation_id,
-            limit=20,
-        )
-        latest_inbound = self._find_latest_inbound_message_id(events)
-        return latest_inbound is not None and latest_inbound != current_message_id
+
+        current_task = asyncio.current_task()
+        should_process = False
+        async with _debounce_lock:
+            latest = _debounce_latest.get(jid)
+            latest_message_id = latest.message_id if latest is not None else None
+            should_process = latest_message_id == message_id
+            if should_process:
+                _debounce_latest.pop(jid, None)
+            if _debounce_tasks.get(jid) is current_task:
+                _debounce_tasks.pop(jid, None)
+
+        if should_process:
+            logger.info(
+                "debounce_fired",
+                jid=jid[:4] + "***",
+                delay_seconds=DEBOUNCE_SECONDS,
+            )
+        return should_process
 
     @staticmethod
     def _find_latest_inbound_message_id(events: list[ConversationEvent]) -> str | None:

@@ -25,6 +25,7 @@ from core.domain.messaging import (
     UnsupportedEventTypeError,
 )
 from core.ports.messaging_provider import MessagingProvider
+from core.utils.human_delay import human_delay
 
 logger = structlog.get_logger("super_agent_platform.adapters.messaging.evolution.adapter")
 
@@ -42,6 +43,8 @@ class EvolutionMessagingAdapter(MessagingProvider):
         )
 
     async def send_text(self, to: str, text: str, correlation_id: str) -> MessageDeliveryReceipt:
+        await self._send_typing(to=to)
+        await human_delay(text=text, correlation_id=correlation_id)
         return await self._send_message(
             endpoint="/message/sendText",
             payload={"number": to, "text": text},
@@ -85,6 +88,24 @@ class EvolutionMessagingAdapter(MessagingProvider):
             f"/chat/markMessageAsRead/{self._settings.evolution_instance_name}",
             json={"messageId": message_id},
         )
+
+    async def _send_typing(self, to: str) -> None:
+        try:
+            normalized_number = self._normalize_outbound_number(to)
+            await self._client.post(
+                f"/chat/sendPresence/{self._settings.evolution_instance_name}",
+                json={
+                    "number": normalized_number,
+                    "options": {"presence": "composing"},
+                },
+            )
+            logger.debug("typing_presence_sent", to=normalized_number[:4] + "***")
+        except Exception as exc:
+            logger.warning(
+                "typing_presence_failed",
+                to=to[:4] + "***",
+                reason=str(exc),
+            )
 
     async def get_media_base64(
         self,

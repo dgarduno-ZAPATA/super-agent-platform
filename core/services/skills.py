@@ -177,9 +177,11 @@ class SkillRegistry:
         filters: dict[str, object] = {}
         if location_term:
             filters["location"] = location_term
-        logger.info(
+        logger.debug(
             "inventory_query_started",
+            # TODO: lead_id no disponible en este scope (Sprint E refactor)
             lead_id=None,
+            # TODO: correlation_id no disponible en este scope (Sprint E refactor)
             correlation_id=None,
             evento="inventory_query_started",
             resultado="ok",
@@ -194,7 +196,9 @@ class SkillRegistry:
         except Exception:
             logger.error(
                 "inventory_query_error",
+                # TODO: lead_id no disponible en este scope (Sprint E refactor)
                 lead_id=None,
+                # TODO: correlation_id no disponible en este scope (Sprint E refactor)
                 correlation_id=None,
                 evento="inventory_query_error",
                 resultado="error",
@@ -209,15 +213,19 @@ class SkillRegistry:
         if fallback_used or not matches:
             logger.warning(
                 "inventory_query_empty",
+                # TODO: lead_id no disponible en este scope (Sprint E refactor)
                 lead_id=None,
+                # TODO: correlation_id no disponible en este scope (Sprint E refactor)
                 correlation_id=None,
                 evento="inventory_query_empty",
                 resultado="fallback",
             )
         else:
-            logger.info(
+            logger.debug(
                 "inventory_query_ok",
+                # TODO: lead_id no disponible en este scope (Sprint E refactor)
                 lead_id=None,
+                # TODO: correlation_id no disponible en este scope (Sprint E refactor)
                 correlation_id=None,
                 evento="inventory_query_ok",
                 resultado="ok",
