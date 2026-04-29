@@ -2960,6 +2960,8 @@ async def admin_panel() -> HTMLResponse:
     const loginScreen = document.getElementById("login-screen");
     const panelScreen = document.getElementById("panel-screen");
     const loginForm = document.getElementById("login-form");
+    const usernameInput = document.getElementById("username");
+    const passwordInput = document.getElementById("password");
     const loginError = document.getElementById("login-error");
     const login2faWrap = document.getElementById("login-2fa-wrap");
     const login2faCode = document.getElementById("login-2fa-code");
@@ -5160,10 +5162,6 @@ con [tu unidad|el {vehiculo}]?`,
       submitBtn.disabled = true;
       submitBtn.innerHTML = '<span class="spinner btn-spinner" aria-hidden="true"></span><span>Procesando...</span>';
       inputs.forEach((i) => { i.disabled = true; });
-      const formData = new FormData(loginForm);
-      const username = String(formData.get("username") || "");
-      const password = String(formData.get("password") || "");
-      const code = String(formData.get("login_2fa_code") || "").trim();
       const restoreLogin = () => {
         submitBtn.disabled = false;
         submitBtn.innerHTML = pendingPreAuthToken ? "Verificar código" : "Entrar";
@@ -5172,6 +5170,7 @@ con [tu unidad|el {vehiculo}]?`,
       try {
         let accessToken = "";
         if (pendingPreAuthToken) {
+          const code = String(login2faCode.value || "").trim();
           const response = await fetch("/api/v1/auth/2fa/login", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -5186,6 +5185,8 @@ con [tu unidad|el {vehiculo}]?`,
           }
           accessToken = String(payload.access_token || "");
         } else {
+          const username = String(usernameInput.value || "").trim();
+          const password = String(passwordInput.value || "");
           const response = await fetch("/api/v1/auth/token", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
