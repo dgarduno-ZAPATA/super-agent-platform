@@ -33,3 +33,8 @@ system_messages:
   friction_escalation: >-
     Entiendo que no he sido de ayuda.
     Déjame conectarte con un asesor ahora mismo.
+
+# Alertas operativas
+alerts:
+  crm_dlq_threshold: 3
+  crm_pending_threshold: 50

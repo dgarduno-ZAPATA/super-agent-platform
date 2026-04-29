@@ -1,3 +1,6 @@
+import asyncio
+import json
+import re
 from datetime import date, datetime
 from typing import Any
 
@@ -23,6 +26,26 @@ COL_SINCRONIZADO = "color_mm2kv8c2"
 COL_CANAL = "color_mm2kwvp3"
 COL_ORIGEN = "text_mm2k5g0c"
 COL_NOMBRE_COMPLETO = "text_mm2kz8c6"
+COL_PHONE_DEDUPE = "text_mm2kjsap"
+REOPEN_STAGE_LABEL = "Conversando"
+
+DEFAULT_STAGE_HIERARCHY = [
+    "Nuevo",
+    "Conversando",
+    "Calificando",
+    "Listo para Handoff",
+    "Handoff Hecho",
+]
+DEFAULT_TERMINAL_STAGES = ["Handoff Hecho"]
+DEFAULT_SPECIAL_STAGES: list[str] = []
+COLUMNS_EXCLUDE_FROM_SYNC: frozenset[str] = frozenset(
+    {
+        "multiple_person_mm2kdy8q",  # Asignacion - manual
+        "long_text_mm2k8vtc",  # Notas - manual
+        "pulse_log_mm2kwmcn",  # read-only
+        "pulse_updated_mm2kcr4g",  # read-only
+    }
+)
 
 FSM_STAGE_TO_STAGE_KEY = {
     "idle": "new_lead",
@@ -38,6 +61,69 @@ FSM_STAGE_TO_STAGE_KEY = {
     "cooldown": "nurture",
     "closed": "lost",
 }
+
+
+def _can_advance_stage(
+    current_label: str,
+    new_label: str,
+    hierarchy: list[str],
+    terminal_stages: list[str],
+    special_stages: list[str],
+) -> bool:
+    """
+    Devuelve True si el cambio de etapa esta permitido.
+    """
+    current = current_label.strip()
+    new = new_label.strip()
+
+    if new in special_stages:
+        return True
+    if current in terminal_stages and new == REOPEN_STAGE_LABEL:
+        return True
+    if new not in hierarchy:
+        return True
+    if current not in hierarchy:
+        return True
+
+    new_index = hierarchy.index(new)
+    current_index = hierarchy.index(current)
+    return new_index > current_index
+
+
+def _serialize_column_value(value: object) -> str:
+    if isinstance(value, dict):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _snapshot_lead_columns(
+    column_values: dict[str, object],
+) -> dict[str, object]:
+    """
+    Crea snapshot serializado de columnas para comparacion estable.
+    """
+    return {column_id: _serialize_column_value(value) for column_id, value in column_values.items()}
+
+
+def _diff_columns(
+    current_snapshot: dict[str, object],
+    new_columns: dict[str, object],
+) -> dict[str, object]:
+    """
+    Devuelve solo columnas modificadas respecto al snapshot actual.
+    """
+    if not current_snapshot:
+        return new_columns
+
+    changed: dict[str, object] = {}
+    for col_id, new_val in new_columns.items():
+        new_serialized = _serialize_column_value(new_val)
+        current_serialized = _serialize_column_value(current_snapshot.get(col_id))
+        if current_serialized != new_serialized:
+            changed[col_id] = new_val
+    return changed
 
 
 class MondayCRMAdapter(CRMProvider):
@@ -57,6 +143,9 @@ class MondayCRMAdapter(CRMProvider):
         }
         self._stage_map = self._load_stage_map()
         self._field_map = self._load_field_map()
+        self._stage_hierarchy = self._load_stage_hierarchy()
+        self._terminal_stages = self._load_terminal_stages()
+        self._special_stages = self._load_special_stages()
 
     async def _gql(
         self, query: str, variables: dict[str, object] | None = None
@@ -84,16 +173,30 @@ class MondayCRMAdapter(CRMProvider):
             return result
 
     async def _find_item_by_phone(self, phone: str) -> str | None:
+        normalized_phone = self._normalize_phone(phone)
+        if not normalized_phone:
+            return None
         query = """
         query($board: ID!, $phone: String!) {
           items_page_by_column_values(
             limit: 1,
             board_id: $board,
-            columns: [{column_id: "text_mm2k3epp", column_values: [$phone]}]
+            columns: [{column_id: "text_mm2kjsap", column_values: [$phone]}]
           ) { items { id } }
         }
         """
-        data = await self._gql(query, {"board": str(self._board_id), "phone": phone})
+        try:
+            data = await self._gql(
+                query,
+                {"board": str(self._board_id), "phone": normalized_phone},
+            )
+        except Exception as exc:
+            logger.warning(
+                "monday_dedup_lookup_failed",
+                phone_masked=normalized_phone[:4] + "***",
+                reason=str(exc),
+            )
+            return None
         data_block = data.get("data")
         if not isinstance(data_block, dict):
             return None
@@ -112,9 +215,8 @@ class MondayCRMAdapter(CRMProvider):
         return item_id
 
     async def upsert_lead(self, lead: Lead) -> str:
-        import json
-
         today = date.today().isoformat()
+        normalized_phone = self._normalize_phone(lead.phone)
         raw_lead_id = lead.attributes.get("lead_id")
         lead_id = str(raw_lead_id).strip() if raw_lead_id is not None else None
         if not lead_id:
@@ -124,7 +226,21 @@ class MondayCRMAdapter(CRMProvider):
         if not correlation_id:
             correlation_id = None
         try:
-            existing_id = await self._find_item_by_phone(lead.phone)
+            existing_id = lead.external_id.strip() if isinstance(lead.external_id, str) else None
+            if not existing_id:
+                raw_monday_id = lead.attributes.get("monday_id")
+                if raw_monday_id is not None:
+                    monday_id = str(raw_monday_id).strip()
+                    existing_id = monday_id or None
+
+            if not existing_id and normalized_phone:
+                existing_id = await self._find_item_by_phone(normalized_phone)
+                if existing_id:
+                    logger.info(
+                        "monday_dedup_found",
+                        phone_masked=normalized_phone[:4] + "***",
+                        item_id=existing_id,
+                    )
             resolved_name = self._resolve_lead_name(lead)
             vehicle_interest = self._attr_as_text(lead, "vehicle_interest")
             city = self._attr_as_text(lead, "city")
@@ -139,6 +255,7 @@ class MondayCRMAdapter(CRMProvider):
             )
             column_values: dict[str, object] = {
                 COL_TELEFONO: lead.phone,
+                COL_PHONE_DEDUPE: normalized_phone,
                 COL_NOMBRE_COMPLETO: resolved_name,
                 COL_ORIGEN: lead.source or "WhatsApp Bot",
                 COL_VEHICULO: vehicle_interest or "",
@@ -160,9 +277,44 @@ class MondayCRMAdapter(CRMProvider):
             )
             request_column_values = dict(column_values)
             request_column_values.update(optional_column_values)
+            original_keys = list(request_column_values.keys())
+            request_column_values = {
+                key: value
+                for key, value in request_column_values.items()
+                if key and value is not None
+            }
+            removed_columns = sorted(set(original_keys) - set(request_column_values.keys()))
+            if removed_columns:
+                logger.debug("monday_columns_filtered", removed=removed_columns)
             col_vals = json.dumps(request_column_values)
 
             if existing_id:
+                raw_snapshot = lead.attributes.get("monday_col_snapshot")
+                previous_snapshot: dict[str, object] = (
+                    raw_snapshot if isinstance(raw_snapshot, dict) else {}
+                )
+                full_payload = {
+                    key: value
+                    for key, value in request_column_values.items()
+                    if key not in COLUMNS_EXCLUDE_FROM_SYNC
+                }
+                payload_to_send = _diff_columns(previous_snapshot, full_payload)
+
+                if not payload_to_send:
+                    logger.debug(
+                        "monday_sync_skipped",
+                        reason="no_changes",
+                        lead_id=lead_id,
+                    )
+                    lead.attributes["monday_id"] = existing_id
+                    return existing_id
+
+                logger.info(
+                    "monday_sync_incremental",
+                    columns_changed=sorted(payload_to_send.keys()),
+                    columns_total=len(full_payload),
+                    lead_id=lead_id,
+                )
                 logger.info(
                     "monday_op_enqueued",
                     lead_id=lead_id,
@@ -171,6 +323,7 @@ class MondayCRMAdapter(CRMProvider):
                     resultado="ok",
                     operation="update_item",
                 )
+                update_col_vals = json.dumps(payload_to_send)
                 query = """
                 mutation($item: ID!, $board: ID!, $cols: JSON!) {
                   change_multiple_column_values(
@@ -180,10 +333,20 @@ class MondayCRMAdapter(CRMProvider):
                 """
                 try:
                     await self._gql(
-                        query, {"item": existing_id, "board": str(self._board_id), "cols": col_vals}
+                        query,
+                        {
+                            "item": existing_id,
+                            "board": str(self._board_id),
+                            "cols": update_col_vals,
+                        },
                     )
                 except Exception as exc:
                     if optional_column_values and self._is_optional_column_error(exc):
+                        fallback_payload = {
+                            key: value
+                            for key, value in column_values.items()
+                            if key not in COLUMNS_EXCLUDE_FROM_SYNC
+                        }
                         logger.warning(
                             "monday_optional_columns_ignored",
                             method="upsert_lead",
@@ -196,7 +359,7 @@ class MondayCRMAdapter(CRMProvider):
                             {
                                 "item": existing_id,
                                 "board": str(self._board_id),
-                                "cols": json.dumps(column_values),
+                                "cols": json.dumps(fallback_payload),
                             },
                         )
                     else:
@@ -204,6 +367,8 @@ class MondayCRMAdapter(CRMProvider):
                 logger.info(
                     "monday_lead_upserted", item_id=existing_id, phone=lead.phone, action="updated"
                 )
+                lead.attributes["monday_id"] = existing_id
+                lead.attributes["monday_col_snapshot"] = _snapshot_lead_columns(full_payload)
                 logger.info(
                     "monday_op_ok",
                     lead_id=lead_id,
@@ -263,6 +428,7 @@ class MondayCRMAdapter(CRMProvider):
             if not isinstance(item_id, str):
                 raise ValueError("Monday create_item response id is invalid")
             logger.info("monday_lead_upserted", item_id=item_id, phone=lead.phone, action="created")
+            lead.attributes["monday_id"] = item_id
             logger.info(
                 "monday_op_ok",
                 lead_id=lead_id,
@@ -288,6 +454,11 @@ class MondayCRMAdapter(CRMProvider):
                 error=str(exc),
             )
             raise
+
+    @staticmethod
+    def _normalize_phone(phone: str) -> str:
+        """Normaliza teléfono a dígitos únicamente."""
+        return re.sub(r"\D", "", phone)
 
     async def change_stage(
         self,
@@ -322,6 +493,22 @@ class MondayCRMAdapter(CRMProvider):
             raise ValueError("monday item not found for stage change")
 
         try:
+            current_stage = await self._get_item_stage_label(monday_id)
+            if current_stage and not _can_advance_stage(
+                current_label=current_stage,
+                new_label=label,
+                hierarchy=self._stage_hierarchy,
+                terminal_stages=self._terminal_stages,
+                special_stages=self._special_stages,
+            ):
+                logger.warning(
+                    "monday_stage_blocked",
+                    current=current_stage,
+                    attempted=label,
+                    reason="hierarchy_violation",
+                )
+                return
+
             logger.info(
                 "monday_op_enqueued",
                 lead_id=lead_id,
@@ -381,31 +568,83 @@ class MondayCRMAdapter(CRMProvider):
             )
             raise
 
-    async def add_note(self, lead_id: str, note: str, author: str) -> None:
-        import json
-
-        try:
-            query = """
-            mutation($item: ID!, $board: ID!, $col: String!, $val: JSON!) {
-              change_column_value(
-                item_id: $item, board_id: $board,
-                column_id: $col, value: $val
-              ) { id }
+    async def _get_item_stage_label(self, item_id: str) -> str | None:
+        query = """
+        query($item: ID!) {
+          items(ids: [$item]) {
+            column_values(ids: ["color_mm2kvwdj"]) {
+              text
             }
-            """
-            await self._gql(
+          }
+        }
+        """
+        try:
+            data = await asyncio.wait_for(self._gql(query, {"item": item_id}), timeout=5.0)
+        except Exception as exc:
+            logger.warning(
+                "monday_stage_fetch_failed",
+                item_id=item_id,
+                reason=str(exc),
+            )
+            return None
+
+        data_block = data.get("data")
+        if not isinstance(data_block, dict):
+            return None
+        items = data_block.get("items")
+        if not isinstance(items, list) or not items:
+            return None
+        first_item = items[0]
+        if not isinstance(first_item, dict):
+            return None
+        column_values = first_item.get("column_values")
+        if not isinstance(column_values, list) or not column_values:
+            return None
+        first_column = column_values[0]
+        if not isinstance(first_column, dict):
+            return None
+        raw_text = first_column.get("text")
+        if not isinstance(raw_text, str):
+            return None
+        text = raw_text.strip()
+        return text or None
+
+    async def add_note(self, lead_id: str, note: str, author: str) -> None:
+        query = """
+        mutation($item: ID!, $body: String!) {
+          create_update(item_id: $item, body: $body) { id }
+        }
+        """
+        note_body = f"[{author}]: {note}" if author else note
+        try:
+            result = await self._gql(
                 query,
                 {
                     "item": lead_id,
-                    "board": str(self._board_id),
-                    "col": COL_NOTAS,
-                    "val": json.dumps({"text": f"[{author}]: {note}"}),
+                    "body": note_body,
                 },
             )
-            logger.info("monday_note_added", lead_id=lead_id, author=author)
+            update_id: str | None = None
+            data_block = result.get("data")
+            if isinstance(data_block, dict):
+                create_update = data_block.get("create_update")
+                if isinstance(create_update, dict):
+                    raw_update_id = create_update.get("id")
+                    if isinstance(raw_update_id, str):
+                        update_id = raw_update_id
+            logger.info(
+                "monday_note_added",
+                item_id=lead_id,
+                update_id=update_id,
+                lead_id=lead_id,
+            )
         except Exception as exc:
-            logger.error("monday_api_error", method="add_note", lead_id=lead_id, error=str(exc))
-            raise
+            logger.warning(
+                "monday_note_failed",
+                item_id=lead_id,
+                lead_id=lead_id,
+                reason=str(exc),
+            )
 
     async def assign_owner(self, lead_id: str, owner_id: str) -> None:
         logger.info("monday_assign_owner_pending", lead_id=lead_id, owner_id=owner_id)
@@ -453,6 +692,18 @@ class MondayCRMAdapter(CRMProvider):
         except Exception as exc:
             logger.warning("monday_stage_map_unavailable", error=str(exc), fallback="Nuevo")
             return {}
+
+    @staticmethod
+    def _load_stage_hierarchy() -> list[str]:
+        return list(DEFAULT_STAGE_HIERARCHY)
+
+    @staticmethod
+    def _load_terminal_stages() -> list[str]:
+        return list(DEFAULT_TERMINAL_STAGES)
+
+    @staticmethod
+    def _load_special_stages() -> list[str]:
+        return list(DEFAULT_SPECIAL_STAGES)
 
     @staticmethod
     def _load_field_map() -> dict[str, str]:

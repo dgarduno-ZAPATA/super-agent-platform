@@ -1,0 +1,71 @@
+# [Sprint C · Mini-prompt C1] Verificación E2E + corrección de column IDs en Monday
+
+**Fecha:** 2026-04-28 · **Estado:** ? verificado · ? cerrado
+
+## Objetivo
+Verificar contra board real de Monday los column IDs usados por CRM y corregir los IDs inválidos que disparaban `monday_optional_columns_ignored`.
+
+## Prompt enviado a Dev-AI
+- Diagnóstico completo de `brand/crm_mapping.yaml`, `adapters/crm/monday_adapter.py`, `core/services/crm_worker.py`
+- Query GraphQL al board real para obtener IDs reales de columnas
+- Cruce de IDs configurados vs IDs reales
+- Fix en mapping y guard en adapter para filtrar IDs/valores vacíos
+- Upsert E2E de prueba contra Monday producción
+
+## Diagnóstico reportado por Dev-AI
+- `crm_mapping.yaml` tenía IDs legacy no existentes en board real (`nombre_contacto`, `telefono_principal`, `fuente_lead`, `vehiculo_interes`, `ciudad`, `etapa_bot`).
+- `MondayCRMAdapter` construye payload con columnas base + opcionales (`field_map`) y, si falla por columnas opcionales, loggea `monday_optional_columns_ignored` y reintenta con base.
+- `crm_worker` despacha `upsert_lead` desde outbox (`get_pending_batch` ? `_dispatch_operation` ? `upsert_lead`) sin manejo por-column-id (eso vive en el adapter).
+- Board real: 39 columnas; IDs reales confirmados por GraphQL.
+
+## Cambios aplicados
+| Archivo | Tipo | Resumen |
+|---------|------|---------|
+| brand/crm_mapping.yaml | edit | Reemplazo de `field_map` con IDs reales del board |
+| adapters/crm/monday_adapter.py | edit | Filtro de `columns_payload` para remover keys vacías/None y log `monday_columns_filtered` |
+| tests/unit/test_monday_column_mapping.py | add | Validación de IDs no vacíos y presencia de campos mínimos |
+
+## Resultado E2E board real
+- Query columnas board: OK (`Total columnas en board: 39`)
+- Upsert de prueba: OK (`item_id=11874306730`, acción `updated`)
+- Warning de runtime por columnas inválidas durante prueba: no observado
+
+## Tests / CI
+- pytest: 260 passed
+- ruff: All checks passed
+- black: 196 files left unchanged
+- mypy: Success (63 source files)
+
+## Decisiones de diseño
+- Se corrigió `field_map` directamente a IDs reales del board para eliminar warnings de columnas opcionales inválidas.
+- Se agregó filtro defensivo en adapter para evitar enviar columnas con key vacía o valor `None`.
+- Se mantuvo la lógica actual de fallback opcional?base sin alterar flujo de outbox/worker.
+
+## Riesgos / pendientes
+- El string `monday_optional_columns_ignored` sigue existiendo en código como protección futura; el éxito depende de mantener `crm_mapping.yaml` sincronizado con board.
+- Logs E2E mostraron `lead_id=None`/`correlation_id=None` en operación manual de prueba (no bloquea C1, se atiende en trabajo de trazabilidad posterior si aplica).
+
+## Comandos para reproducir
+```bash
+docker compose exec app pytest -v
+docker compose exec app ruff check . --fix
+docker compose exec app black .
+docker compose exec app mypy core/
+```
+
+```bash
+# Query columnas reales de board
+docker compose exec -T app python - <<'EOF'
+# (script GraphQL de columnas usado en C1)
+EOF
+```
+
+```bash
+# Upsert E2E de prueba
+docker compose exec -T app python - <<'EOF'
+# (script de upsert de Lead usado en C1)
+EOF
+```
+
+## Siguiente paso sugerido
+- C2: deduplicación por teléfono antes de `create_item`, reutilizando `text_mm2kjsap` (Phone Dedupe) y búsqueda previa en board.
