@@ -42,6 +42,11 @@ class SystemMessagesConfig(StrictConfigModel):
     )
 
 
+class AlertsConfig(StrictConfigModel):
+    crm_dlq_threshold: int = 3
+    crm_pending_threshold: int = 50
+
+
 class BrandConfig(StrictConfigModel):
     name: str
     slug: str = "selectrucks-zapata"
@@ -55,6 +60,7 @@ class BrandConfig(StrictConfigModel):
     admin_title: str = "Panel de Raúl"
     inventory_columns: InventoryColumnsConfig = Field(default_factory=InventoryColumnsConfig)
     system_messages: SystemMessagesConfig = Field(default_factory=SystemMessagesConfig)
+    alerts: AlertsConfig = Field(default_factory=AlertsConfig)
 
 
 class FunnelStateConfig(StrictConfigModel):

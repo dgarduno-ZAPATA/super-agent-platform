@@ -44,6 +44,12 @@ class FakeCRMOutboxRepository:
     async def move_to_dlq(self, item_id, error: str):
         self.dlq_calls.append({"item_id": str(item_id), "error": error})
 
+    async def count_dlq_items(self) -> int:
+        return 0
+
+    async def count_pending_items(self) -> int:
+        return 0
+
 
 class FakeCRMProvider:
     def __init__(self, fail: bool = False) -> None:

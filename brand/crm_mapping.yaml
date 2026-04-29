@@ -7,13 +7,27 @@ stage_map:
   nurture: Conversando
   handoff: Listo para Handoff
   handoff_done: Handoff Hecho
-  won: Nuevo
+  won: Handoff Hecho
   lost: Nuevo
   do_not_contact: Nuevo
 field_map:
-  lead_name: nombre_contacto
-  phone: telefono_principal
-  source: fuente_lead
-  vehicle_interest: vehiculo_interes
-  city: ciudad
-  fsm_state: etapa_bot
+  lead_name: text_mm2kz8c6
+  phone: text_mm2k3epp
+  source: text_mm2k5g0c
+  vehicle_interest: text_mm2ktbs7
+  city: text_mm2k4nfy
+  fsm_state: color_mm2kvwdj
+
+# stage_hierarchy:
+#   - "Nuevo"               # indice 0 - mas temprano
+#   - "Conversando"         # indice 1
+#   - "Calificando"         # indice 2
+#   - "Listo para Handoff"  # indice 3
+#   - "Handoff Hecho"       # indice 4 - terminal
+#
+# terminal_stages:
+#   - "Handoff Hecho"
+#
+# special_stages: []
+# No hay "Sin Interes" en el board actual.
+# Si se agrega en Monday futuro, se registra aqui.

@@ -4,6 +4,8 @@ from datetime import UTC, datetime, timedelta
 
 import structlog
 
+from core.brand.loader import load_brand_config
+from core.brand.schema import Brand
 from core.domain.lead import Lead
 from core.ports.crm_provider import CRMProvider
 from core.ports.repositories import CRMOutboxRepository
@@ -16,9 +18,11 @@ class CRMSyncWorker:
         self,
         crm_outbox_repository: CRMOutboxRepository,
         crm_provider: CRMProvider,
+        brand_config: Brand | None = None,
     ) -> None:
         self._crm_outbox_repository = crm_outbox_repository
         self._crm_provider = crm_provider
+        self._brand_config = brand_config or load_brand_config()
 
     async def process_batch(self, batch_size: int = 10) -> None:
         items = await self._crm_outbox_repository.get_pending_batch(limit=batch_size)
@@ -57,6 +61,56 @@ class CRMSyncWorker:
                         item_id=str(item.id),
                         attempt=next_attempt,
                     )
+
+        await self._check_dlq_alerts()
+
+    async def _check_dlq_alerts(self) -> None:
+        """
+        Verify DLQ state and emit alerts when configured thresholds are exceeded.
+        Best-effort: this method never raises.
+        """
+        try:
+            dlq_count = await self._crm_outbox_repository.count_dlq_items()
+            pending_count = await self._crm_outbox_repository.count_pending_items()
+            threshold = self._brand_config.brand.alerts.crm_dlq_threshold
+            pending_threshold = self._brand_config.brand.alerts.crm_pending_threshold
+
+            if dlq_count >= threshold:
+                logger.warning(
+                    "crm_dlq_threshold_exceeded",
+                    dlq_count=dlq_count,
+                    threshold=threshold,
+                )
+                try:
+                    import sentry_sdk
+
+                    with sentry_sdk.push_scope() as scope:
+                        scope.set_extra("dlq_count", dlq_count)
+                        scope.set_extra("threshold", threshold)
+                        sentry_sdk.capture_message(
+                            f"CRM DLQ threshold exceeded: {dlq_count} items",
+                            level="warning",
+                        )
+                except Exception:
+                    pass
+
+            if pending_count >= pending_threshold:
+                logger.warning(
+                    "crm_pending_threshold_exceeded",
+                    pending_count=pending_count,
+                    threshold=pending_threshold,
+                )
+
+            logger.debug(
+                "crm_outbox_health",
+                dlq_count=dlq_count,
+                pending_count=pending_count,
+            )
+        except Exception as exc:
+            logger.warning(
+                "crm_dlq_check_failed",
+                reason=str(exc),
+            )
 
     async def _dispatch_operation(self, operation: str, payload: dict[str, object]) -> None:
         if operation == "upsert_lead":
