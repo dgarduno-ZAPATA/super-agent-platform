@@ -8,6 +8,7 @@ import structlog
 from core.brand.schema import BrandConfig
 from core.domain.conversation_event import ConversationEvent
 from core.domain.session import Session
+from core.ports.branch_provider import BranchProvider
 from core.ports.messaging_provider import MessagingProvider
 from core.ports.repositories import ConversationEventRepository, SessionRepository
 
@@ -120,11 +121,13 @@ class HandoffService:
         conversation_event_repository: ConversationEventRepository,
         messaging_provider: MessagingProvider | None = None,
         brand_config: BrandConfig | None = None,
+        branch_provider: BranchProvider | None = None,
     ) -> None:
         self._session_repository = session_repository
         self._conversation_event_repository = conversation_event_repository
         self._messaging = messaging_provider
         self._brand_config = brand_config
+        self._branch_provider = branch_provider
 
     async def take_control(self, lead_id: UUID) -> Session:
         session = await self._get_session_by_lead_id(lead_id)
@@ -307,8 +310,14 @@ class HandoffService:
             advisor_phone = _first_non_empty(
                 context.get("branch_phone"),
                 context.get("sucursal_phone"),
-                configured_phone,
+                attrs.get("branch_phone"),
+                attrs.get("sucursal_phone"),
+                attrs.get("telefono_encargado"),
             )
+            if not advisor_phone:
+                advisor_phone = self._resolve_branch_phone(context=context, attrs=attrs)
+            if not advisor_phone:
+                advisor_phone = configured_phone
 
             if not advisor_phone:
                 logger.warning(
@@ -347,3 +356,41 @@ class HandoffService:
                 reason=str(exc),
                 lead_id=str(session.lead_id),
             )
+
+    def _resolve_branch_phone(
+        self,
+        context: dict[str, object],
+        attrs: dict[str, object],
+    ) -> str:
+        if self._branch_provider is None:
+            return ""
+
+        branch_key = _first_non_empty(
+            context.get("sucursal_key"),
+            context.get("branch_key"),
+            attrs.get("sucursal_key"),
+            attrs.get("branch_key"),
+        )
+        if branch_key:
+            by_key = self._branch_provider.get_branch_by_key(branch_key)
+            if by_key is not None and by_key.phones:
+                return by_key.phones[0]
+
+        centro = _first_non_empty(
+            context.get("centro_sheet"),
+            context.get("centro"),
+            context.get("centro_inventario"),
+            attrs.get("centro_sheet"),
+            attrs.get("centro"),
+            attrs.get("centro_inventario"),
+            context.get("city"),
+            context.get("ciudad"),
+            attrs.get("city"),
+            attrs.get("ciudad"),
+        )
+        if centro:
+            by_centro = self._branch_provider.get_branch_by_centro(centro)
+            if by_centro is not None and by_centro.phones:
+                return by_centro.phones[0]
+
+        return ""

@@ -289,6 +289,7 @@ def get_handoff_service(
         ConversationEventRepository, Depends(get_conversation_event_repository)
     ],
     messaging_provider: Annotated[MessagingProvider, Depends(get_messaging_provider)],
+    branch_provider: Annotated[BranchProvider, Depends(get_branch_provider)],
     brand: Annotated[Brand, Depends(get_brand)],
 ) -> HandoffService:
     return HandoffService(
@@ -296,6 +297,7 @@ def get_handoff_service(
         conversation_event_repository=conversation_event_repository,
         messaging_provider=messaging_provider,
         brand_config=brand.brand,
+        branch_provider=branch_provider,
     )
 
 
