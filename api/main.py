@@ -9,7 +9,11 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from adapters.storage.db import session_scope
+from adapters.storage.models import AdminUserModel
 from api.dependencies import get_current_user, get_inventory_provider
 from api.middleware.correlation import CorrelationMiddleware
 from api.routers.admin_panel import router as admin_router
@@ -27,6 +31,21 @@ from core.ports.inventory_provider import InventoryProvider
 from infra.scheduler import start_campaign_scheduler, stop_campaign_scheduler
 
 SERVICE_NAME = "super-agent-platform"
+
+
+async def _check_admin_users(session: AsyncSession, logger: structlog.BoundLogger) -> int:
+    result = await session.execute(
+        select(func.count()).select_from(AdminUserModel).where(AdminUserModel.is_active.is_(True))
+    )
+    active_count = int(result.scalar() or 0)
+    if active_count == 0:
+        logger.warning(
+            "no_active_admin_users",
+            hint="Run: docker compose exec app python scripts/migrate_admin_user.py",
+        )
+    else:
+        logger.info("admin_users_ok", active_count=active_count)
+    return active_count
 
 
 def create_app() -> FastAPI:
@@ -90,22 +109,29 @@ def create_app() -> FastAPI:
             )
             raise
 
+        try:
+            async with session_scope() as session:
+                await _check_admin_users(session=session, logger=logger)
+        except Exception as exc:
+            logger.warning(
+                "admin_users_check_failed",
+                error=str(exc),
+                hint="run alembic upgrade head before enabling DB-backed admin auth",
+            )
+
         if (
             not settings.jwt_secret_key.strip()
-            or not settings.admin_password.strip()
             or not settings.internal_token.strip()
             or not settings.evolution_api_key.strip()
         ):
             logger.critical(
                 "security_configuration_invalid",
                 jwt_secret_key_set=bool(settings.jwt_secret_key.strip()),
-                admin_password_set=bool(settings.admin_password.strip()),
                 internal_token_set=bool(settings.internal_token.strip()),
                 evolution_api_key_set=bool(settings.evolution_api_key.strip()),
             )
             raise RuntimeError(
-                "JWT_SECRET_KEY, ADMIN_PASSWORD, INTERNAL_TOKEN and "
-                "EVOLUTION_API_KEY must be configured"
+                "JWT_SECRET_KEY, INTERNAL_TOKEN and EVOLUTION_API_KEY must be configured"
             )
 
         application.state.brand = brand

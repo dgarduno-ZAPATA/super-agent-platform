@@ -15,6 +15,7 @@ from adapters.llm.vertex_transcription_adapter import VertexTranscriptionAdapter
 from adapters.messaging.evolution.adapter import EvolutionMessagingAdapter
 from adapters.storage.db import get_session_factory
 from adapters.storage.repositories.admin_totp_repo import PostgresAdminTOTPRepository
+from adapters.storage.repositories.admin_user_repo import PostgresAdminUserRepository
 from adapters.storage.repositories.audit_log_repo import PostgresAuditLogRepository
 from adapters.storage.repositories.crm_outbox_repo import PostgresCRMOutboxRepository
 from adapters.storage.repositories.event_repo import PostgresConversationEventRepository
@@ -29,6 +30,7 @@ from core.brand.loader import load_brand_config
 from core.brand.schema import Brand
 from core.config import get_settings
 from core.fsm.schema import FSMConfig
+from core.ports.admin_user_repository import AdminUserRepository
 from core.ports.branch_provider import BranchProvider
 from core.ports.conversation_log import ConversationLogPort
 from core.ports.crm_provider import CRMProvider
@@ -45,6 +47,7 @@ from core.ports.repositories import (
     SilencedUserRepository,
 )
 from core.ports.transcription_provider import TranscriptionProvider
+from core.services.admin_auth_service import AdminAuthService
 from core.services.audit_log_service import AuditLogService
 from core.services.campaign_worker import CampaignWorker
 from core.services.conversation_agent import ConversationAgent
@@ -222,6 +225,16 @@ def get_login_attempt_service(
     ],
 ) -> LoginAttemptService:
     return LoginAttemptService(repo=login_attempt_repository)
+
+
+def get_admin_user_repository() -> AdminUserRepository:
+    return PostgresAdminUserRepository()
+
+
+def get_admin_auth_service(
+    admin_user_repository: Annotated[AdminUserRepository, Depends(get_admin_user_repository)],
+) -> AdminAuthService:
+    return AdminAuthService(repo=admin_user_repository)
 
 
 def get_admin_totp_repository() -> PostgresAdminTOTPRepository:

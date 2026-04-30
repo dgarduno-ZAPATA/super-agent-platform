@@ -83,10 +83,12 @@ class Settings(BaseSettings):
     jwt_secret_key: str = Field(default="", alias="JWT_SECRET_KEY")
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
     access_token_expire_minutes: int = Field(default=60 * 8, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
-    admin_username: str = Field(default="admin", alias="ADMIN_USERNAME")
-    admin_password: str = Field(default="", alias="ADMIN_PASSWORD")
+    # DEPRECATED: solo para bootstrap inicial via scripts/migrate_admin_user.py.
+    # No se usan en el flujo de login desde D1 (Sprint D).
+    admin_username: str = Field(default="", alias="ADMIN_USERNAME")
+    admin_password: str = Field(default="", alias="ADMIN_PASSWORD", repr=False)
     admin_username_2: str = Field(default="", alias="ADMIN_USERNAME_2")
-    admin_password_2: str = Field(default="", alias="ADMIN_PASSWORD_2")
+    admin_password_2: str = Field(default="", alias="ADMIN_PASSWORD_2", repr=False)
 
     model_config = SettingsConfigDict(
         env_file=".env.local",

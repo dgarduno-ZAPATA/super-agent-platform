@@ -75,6 +75,8 @@ openai = ">=1.30.0"
 pyotp = ">=2.9.0"
 qrcode = {version = ">=7.4.2", extras = ["pil"]}
 gspread = ">=6.1.4,<7.0.0"
+passlib = {version = ">=1.7.4,<2.0", extras = ["bcrypt"]}
+bcrypt = ">=4,<5"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.1.1"

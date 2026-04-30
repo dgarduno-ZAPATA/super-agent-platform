@@ -2,18 +2,23 @@ from __future__ import annotations
 
 import base64
 import io
+import re
 from collections import defaultdict, deque
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
+from uuid import UUID
 
 import pyotp
 import qrcode
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 
 from adapters.storage.repositories.admin_totp_repo import PostgresAdminTOTPRepository
 from api.dependencies import (
+    get_admin_auth_service,
     get_admin_totp_repository,
+    get_admin_user_repository,
     get_audit_log_service,
     get_brand,
     get_current_user,
@@ -21,7 +26,8 @@ from api.dependencies import (
 )
 from core.auth.jwt_handler import create_access_token, verify_token
 from core.brand.schema import Brand
-from core.config import get_settings
+from core.ports.admin_user_repository import AdminUser, AdminUserRepository
+from core.services.admin_auth_service import AdminAuthService
 from core.services.audit_log_service import AuditLogService
 from core.services.login_attempt_service import LoginAttemptService
 
@@ -46,6 +52,59 @@ class TwoFactorLoginRequest(BaseModel):
     code: str
 
 
+class AdminUserResponse(BaseModel):
+    id: UUID
+    username: str
+    is_active: bool
+    created_at: datetime
+    last_login_at: datetime | None
+
+
+class CreateAdminUserRequest(BaseModel):
+    username: str
+    password: str
+
+
+class AdminUserStatusRequest(BaseModel):
+    is_active: bool
+
+
+class UpdatePasswordRequest(BaseModel):
+    new_password: str
+
+
+_USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9.-]{3,50}$")
+
+
+def _validate_username(username: str) -> str:
+    candidate = username.strip()
+    if not _USERNAME_PATTERN.fullmatch(candidate):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="username_debe_tener_3_50_y_solo_letras_numeros_puntos_guiones",
+        )
+    return candidate
+
+
+def _validate_password(password: str) -> str:
+    if len(password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="password_minimo_8_caracteres",
+        )
+    return password
+
+
+def _to_admin_user_response(record: AdminUser) -> AdminUserResponse:
+    return AdminUserResponse(
+        id=record.id,
+        username=record.username,
+        is_active=record.is_active,
+        created_at=record.created_at,
+        last_login_at=record.last_login_at,
+    )
+
+
 def _assert_full_auth(current_user: dict[str, object]) -> str:
     stage = str(current_user.get("stage") or "")
     if stage == "pre_auth":
@@ -60,6 +119,8 @@ async def issue_token(
     audit_log_service: Annotated[AuditLogService, Depends(get_audit_log_service)],
     login_attempt_service: Annotated[LoginAttemptService, Depends(get_login_attempt_service)],
     admin_totp_repo: Annotated[PostgresAdminTOTPRepository, Depends(get_admin_totp_repository)],
+    admin_auth_service: Annotated[AdminAuthService, Depends(get_admin_auth_service)],
+    admin_user_repository: Annotated[AdminUserRepository, Depends(get_admin_user_repository)],
 ) -> dict[str, object]:
     client_host = request.client.host if request.client is not None else "unknown"
     user_agent = request.headers.get("user-agent")
@@ -82,28 +143,19 @@ async def issue_token(
             detail="too_many_login_attempts",
         )
 
-    settings = get_settings()
-    primary_match = (
-        payload.username.strip() == settings.admin_username.strip()
-        and payload.password.strip() == settings.admin_password.strip()
-    )
-    secondary_match = (
-        bool(settings.admin_username_2.strip())
-        and bool(settings.admin_password_2.strip())
-        and payload.username.strip() == settings.admin_username_2.strip()
-        and payload.password.strip() == settings.admin_password_2.strip()
-    )
-    if not primary_match and not secondary_match:
+    username = payload.username.strip()
+    user = await admin_auth_service.authenticate(username, payload.password)
+    if user is None:
         attempts.append(now)
         await login_attempt_service.record_attempt(
             ip=client_host,
-            username=payload.username,
+            username=username,
             success=False,
         )
         await audit_log_service.log(
             actor="admin",
             action="login_failed",
-            details={"username": payload.username},
+            details={"username": username},
             ip_address=client_host,
             user_agent=user_agent,
         )
@@ -114,13 +166,13 @@ async def issue_token(
 
     await login_attempt_service.record_attempt(
         ip=client_host,
-        username=payload.username,
+        username=username,
         success=True,
     )
-    totp_record = await admin_totp_repo.get(payload.username)
+    totp_record = await admin_totp_repo.get(username)
     if totp_record is not None and totp_record.enabled:
         pre_auth_token = create_access_token(
-            {"sub": payload.username, "stage": "pre_auth"},
+            {"sub": username, "stage": "pre_auth"},
             expires_minutes=5,
         )
         return {
@@ -128,11 +180,12 @@ async def issue_token(
             "pre_auth_token": pre_auth_token,
         }
 
-    token = create_access_token({"sub": payload.username})
+    token = create_access_token({"sub": username})
+    await admin_user_repository.update_last_login(user.id)
     await audit_log_service.log(
         actor="admin",
         action="login_success",
-        details={"username": payload.username},
+        details={"username": username},
         ip_address=client_host,
         user_agent=user_agent,
     )
@@ -211,3 +264,101 @@ async def complete_2fa_login(
 
     full_token = create_access_token({"sub": username})
     return {"access_token": full_token, "token_type": "bearer"}
+
+
+@router.get("/users", status_code=status.HTTP_200_OK)
+async def list_admin_users(
+    current_user: Annotated[dict[str, object], Depends(get_current_user)],
+    admin_user_repository: Annotated[AdminUserRepository, Depends(get_admin_user_repository)],
+) -> list[AdminUserResponse]:
+    del current_user
+    users = await admin_user_repository.list_all()
+    return [_to_admin_user_response(user) for user in users]
+
+
+@router.post("/users", status_code=status.HTTP_201_CREATED)
+async def create_admin_user(
+    payload: CreateAdminUserRequest,
+    current_user: Annotated[dict[str, object], Depends(get_current_user)],
+    admin_auth_service: Annotated[AdminAuthService, Depends(get_admin_auth_service)],
+    admin_user_repository: Annotated[AdminUserRepository, Depends(get_admin_user_repository)],
+) -> AdminUserResponse:
+    del current_user
+    username = _validate_username(payload.username)
+    password = _validate_password(payload.password)
+
+    existing = await admin_user_repository.get_by_username(username)
+    if existing is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="username_ya_existe")
+
+    try:
+        created = await admin_auth_service.create_user(username=username, password=password)
+    except IntegrityError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="username_ya_existe",
+        ) from exc
+    return _to_admin_user_response(created)
+
+
+@router.put("/users/{user_id}/status", status_code=status.HTTP_200_OK)
+async def set_admin_user_status(
+    user_id: UUID,
+    payload: AdminUserStatusRequest,
+    current_user: Annotated[dict[str, object], Depends(get_current_user)],
+    admin_user_repository: Annotated[AdminUserRepository, Depends(get_admin_user_repository)],
+) -> AdminUserResponse:
+    requester_username = _assert_full_auth(current_user)
+    target_user = await admin_user_repository.get_by_id(user_id)
+    if target_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="usuario_no_encontrado")
+    if target_user.username == requester_username and not payload.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="no_puedes_desactivarte_a_ti_mismo",
+        )
+    await admin_user_repository.set_active(user_id, payload.is_active)
+    refreshed = await admin_user_repository.get_by_id(user_id)
+    if refreshed is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="usuario_no_encontrado")
+    return _to_admin_user_response(refreshed)
+
+
+@router.delete("/users/{user_id}", status_code=status.HTTP_200_OK)
+async def deactivate_admin_user(
+    user_id: UUID,
+    current_user: Annotated[dict[str, object], Depends(get_current_user)],
+    admin_user_repository: Annotated[AdminUserRepository, Depends(get_admin_user_repository)],
+) -> AdminUserResponse:
+    requester_username = _assert_full_auth(current_user)
+    target_user = await admin_user_repository.get_by_id(user_id)
+    if target_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="usuario_no_encontrado")
+    if target_user.username == requester_username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="no_puedes_desactivarte_a_ti_mismo",
+        )
+    await admin_user_repository.set_active(user_id, False)
+    refreshed = await admin_user_repository.get_by_id(user_id)
+    if refreshed is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="usuario_no_encontrado")
+    return _to_admin_user_response(refreshed)
+
+
+@router.put("/users/{user_id}/password", status_code=status.HTTP_200_OK)
+async def update_admin_user_password(
+    user_id: UUID,
+    payload: UpdatePasswordRequest,
+    current_user: Annotated[dict[str, object], Depends(get_current_user)],
+    admin_auth_service: Annotated[AdminAuthService, Depends(get_admin_auth_service)],
+    admin_user_repository: Annotated[AdminUserRepository, Depends(get_admin_user_repository)],
+) -> dict[str, str]:
+    del current_user
+    target_user = await admin_user_repository.get_by_id(user_id)
+    if target_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="usuario_no_encontrado")
+    new_password = _validate_password(payload.new_password)
+    new_hash = admin_auth_service.hash_password(new_password)
+    await admin_user_repository.update_password(user_id=user_id, password_hash=new_hash)
+    return {"message": "Contraseña actualizada"}
