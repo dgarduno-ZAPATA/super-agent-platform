@@ -1,15 +1,117 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import structlog
 
+from core.brand.schema import BrandConfig
 from core.domain.conversation_event import ConversationEvent
 from core.domain.session import Session
+from core.ports.branch_provider import BranchProvider
+from core.ports.messaging_provider import MessagingProvider
 from core.ports.repositories import ConversationEventRepository, SessionRepository
 
 logger = structlog.get_logger("super_agent_platform.core.services.handoff_service")
+
+
+def _build_advisor_alert(
+    lead_name: str | None,
+    phone: str,
+    vehicle_interest: str | None,
+    city: str | None,
+    budget: float | None,
+) -> str:
+    """
+    Build enriched handoff alert text for advisor.
+    Pure function with no IO.
+    """
+    name = lead_name or "Prospecto"
+
+    if budget or city:
+        urgency = "🔴 Alta"
+    elif vehicle_interest:
+        urgency = "🟡 Media"
+    else:
+        urgency = "🟢 Normal"
+
+    import re
+
+    digits = re.sub(r"\D", "", phone)
+    wa_link = f"https://wa.me/{digits}"
+    vehicle = vehicle_interest or "No especificado"
+
+    lines = [
+        "🚛 Nuevo lead listo para atención",
+        "",
+        f"👤 Nombre: {name}",
+        f"🚚 Interés: {vehicle}",
+    ]
+    if city:
+        lines.append(f"📍 Ciudad: {city}")
+    if budget:
+        lines.append(f"💰 Presupuesto: ${budget:,.0f}")
+    lines += [
+        f"⚡ Urgencia: {urgency}",
+        f"📞 WhatsApp: {wa_link}",
+        "",
+        "💬 Acción: Responde directamente desde este número —",
+        "el bot se silenciará automáticamente al detectar tu mensaje.",
+    ]
+    return "\n".join(lines)
+
+
+def _urgency_level(
+    vehicle_interest: str | None,
+    city: str | None,
+    budget: float | None,
+) -> str:
+    if budget or city:
+        return "Alta"
+    if vehicle_interest:
+        return "Media"
+    return "Normal"
+
+
+def _maybe_float(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    return None
+
+
+def _first_non_empty(*values: object) -> str:
+    for value in values:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped:
+                return stripped
+    return ""
+
+
+def _classify_handoff_state(
+    session_context: dict[str, object],
+) -> str:
+    """
+    Classify post-handoff state for observability.
+    Returns one of: responded, interested, active, stop, error, pending.
+    """
+    if session_context.get("advisor_responded"):
+        return "responded"
+    if session_context.get("opt_out") or session_context.get("is_silenced"):
+        return "stop"
+
+    vehicle = session_context.get("vehicle_interest") or session_context.get("vehiculo_interes")
+    if isinstance(vehicle, str) and vehicle.strip():
+        return "interested"
+
+    fsm_state = str(session_context.get("current_state", ""))
+    if fsm_state == "handoff_active":
+        return "active"
+    if fsm_state == "handoff_pending":
+        return "pending"
+    return "pending"
 
 
 class HandoffService:
@@ -17,9 +119,15 @@ class HandoffService:
         self,
         session_repository: SessionRepository,
         conversation_event_repository: ConversationEventRepository,
+        messaging_provider: MessagingProvider | None = None,
+        brand_config: BrandConfig | None = None,
+        branch_provider: BranchProvider | None = None,
     ) -> None:
         self._session_repository = session_repository
         self._conversation_event_repository = conversation_event_repository
+        self._messaging = messaging_provider
+        self._brand_config = brand_config
+        self._branch_provider = branch_provider
 
     async def take_control(self, lead_id: UUID) -> Session:
         session = await self._get_session_by_lead_id(lead_id)
@@ -39,6 +147,7 @@ class HandoffService:
                 context=dict(session.context),
             )
             updated_session = await self._get_session_by_lead_id(lead_id)
+            await self._send_handoff_alert(updated_session)
             await self._append_system_event(updated_session, "system_agent_took_control")
             logger.info(
                 "handoff_ok",
@@ -136,3 +245,152 @@ class HandoffService:
                 message_id=None,
             )
         )
+
+    async def _send_handoff_alert(self, session: Session) -> None:
+        """
+        Build and send enriched handoff alert to advisor.
+        Best effort: never raises.
+        """
+        try:
+            context = session.context
+            lead_attributes = context.get("lead_attributes")
+            attrs = lead_attributes if isinstance(lead_attributes, dict) else {}
+
+            lead_name = context.get("name")
+            if not isinstance(lead_name, str):
+                lead_name = attrs.get("name") if isinstance(attrs.get("name"), str) else None
+
+            phone = _first_non_empty(context.get("phone"), attrs.get("phone"))
+            vehicle_interest = (
+                attrs.get("vehicle_interest")
+                if isinstance(attrs.get("vehicle_interest"), str)
+                else (
+                    attrs.get("vehiculo_interes")
+                    if isinstance(attrs.get("vehiculo_interes"), str)
+                    else None
+                )
+            )
+            city = (
+                attrs.get("city")
+                if isinstance(attrs.get("city"), str)
+                else attrs.get("ciudad") if isinstance(attrs.get("ciudad"), str) else None
+            )
+            budget = _maybe_float(attrs.get("budget"))
+
+            alert_text = _build_advisor_alert(
+                lead_name=lead_name,
+                phone=phone,
+                vehicle_interest=vehicle_interest,
+                city=city,
+                budget=budget,
+            )
+
+            state_context = dict(context)
+            state_context.setdefault("current_state", session.current_state)
+            handoff_state = _classify_handoff_state(state_context)
+            logger.info(
+                "handoff_state_classified",
+                state=handoff_state,
+                lead_id=str(session.lead_id),
+            )
+
+            logger.info(
+                "handoff_alert_enriched",
+                lead_id=str(session.lead_id),
+                urgency=_urgency_level(vehicle_interest, city, budget),
+                has_vehicle=bool(vehicle_interest),
+                has_city=bool(city),
+                has_budget=bool(budget),
+                message=alert_text,
+            )
+
+            configured_phone = (
+                self._brand_config.handoff.notification_phone if self._brand_config else ""
+            )
+            advisor_phone = _first_non_empty(
+                context.get("branch_phone"),
+                context.get("sucursal_phone"),
+                attrs.get("branch_phone"),
+                attrs.get("sucursal_phone"),
+                attrs.get("telefono_encargado"),
+            )
+            if not advisor_phone:
+                advisor_phone = self._resolve_branch_phone(context=context, attrs=attrs)
+            if not advisor_phone:
+                advisor_phone = configured_phone
+
+            if not advisor_phone:
+                logger.warning(
+                    "handoff_alert_no_phone",
+                    reason="notification_phone not configured",
+                )
+                return
+
+            if self._messaging is None:
+                logger.warning(
+                    "handoff_alert_no_messaging",
+                    reason="MessagingProvider not injected",
+                )
+                return
+
+            try:
+                await self._messaging.send_text(
+                    to=advisor_phone,
+                    text=alert_text,
+                    correlation_id=str(session.lead_id),
+                )
+                logger.info(
+                    "handoff_alert_sent",
+                    advisor_phone=advisor_phone[:4] + "***",
+                    lead_id=str(session.lead_id),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "handoff_alert_send_failed",
+                    reason=str(exc),
+                    lead_id=str(session.lead_id),
+                )
+        except Exception as exc:
+            logger.warning(
+                "handoff_alert_build_failed",
+                reason=str(exc),
+                lead_id=str(session.lead_id),
+            )
+
+    def _resolve_branch_phone(
+        self,
+        context: dict[str, object],
+        attrs: dict[str, object],
+    ) -> str:
+        if self._branch_provider is None:
+            return ""
+
+        branch_key = _first_non_empty(
+            context.get("sucursal_key"),
+            context.get("branch_key"),
+            attrs.get("sucursal_key"),
+            attrs.get("branch_key"),
+        )
+        if branch_key:
+            by_key = self._branch_provider.get_branch_by_key(branch_key)
+            if by_key is not None and by_key.phones:
+                return by_key.phones[0]
+
+        centro = _first_non_empty(
+            context.get("centro_sheet"),
+            context.get("centro"),
+            context.get("centro_inventario"),
+            attrs.get("centro_sheet"),
+            attrs.get("centro"),
+            attrs.get("centro_inventario"),
+            context.get("city"),
+            context.get("ciudad"),
+            attrs.get("city"),
+            attrs.get("ciudad"),
+        )
+        if centro:
+            by_centro = self._branch_provider.get_branch_by_centro(centro)
+            if by_centro is not None and by_centro.phones:
+                return by_centro.phones[0]
+
+        return ""

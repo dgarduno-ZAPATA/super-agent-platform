@@ -38,3 +38,7 @@ system_messages:
 alerts:
   crm_dlq_threshold: 3
   crm_pending_threshold: 50
+
+# Notificaciones de handoff
+handoff:
+  notification_phone: ""

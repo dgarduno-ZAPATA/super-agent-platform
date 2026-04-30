@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class StrictEvolutionModel(BaseModel):
@@ -12,7 +12,7 @@ class StrictEvolutionModel(BaseModel):
 class EvolutionMessageKey(StrictEvolutionModel):
     remoteJid: str
     id: str
-    fromMe: bool
+    from_me: bool = Field(default=False, alias="fromMe")
     participant: str | None = None
 
 

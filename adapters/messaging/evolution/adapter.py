@@ -13,6 +13,7 @@ from adapters.messaging.evolution.normalizers import (
     normalize_message_type,
     normalize_phone,
 )
+from adapters.messaging.evolution.outbound_cache import outbound_cache
 from adapters.messaging.evolution.payloads import (
     EvolutionMessagePayload,
     EvolutionWebhookEnvelope,
@@ -200,13 +201,22 @@ class EvolutionMessagingAdapter(MessagingProvider):
             message_type=message_type,
         )
 
-        return MessageDeliveryReceipt(
+        receipt = MessageDeliveryReceipt(
             message_id=message_id,
             provider="evolution",
             status="accepted",
             correlation_id=correlation_id,
             metadata={"endpoint": endpoint},
         )
+        # Cachear el message_id que el bot acaba de enviar.
+        if receipt.message_id:
+            await outbound_cache.add(receipt.message_id)
+            logger.debug(
+                "outbound_message_cached",
+                message_id=receipt.message_id,
+                correlation_id=correlation_id,
+            )
+        return receipt
 
     @staticmethod
     def _normalize_outbound_number(number: str) -> str:
@@ -246,6 +256,7 @@ class EvolutionMessagingAdapter(MessagingProvider):
             message_id=message_payload.key.id,
             from_phone=from_phone,
             kind=message_kind,
+            from_me=message_payload.key.from_me,
             text=text,
             media_url=media_url,
             raw_metadata={
@@ -255,6 +266,7 @@ class EvolutionMessagingAdapter(MessagingProvider):
                 "push_name": message_payload.pushName,
                 "remote_jid": message_payload.key.remoteJid,
                 "participant": message_payload.key.participant,
+                "from_me": message_payload.key.from_me,
             },
             received_at=received_at,
             sender_id=message_payload.key.remoteJid,
