@@ -29,6 +29,7 @@ class InboundEvent:
     message_id: str
     from_phone: str
     kind: MessageKind
+    from_me: bool = False
     text: str | None = None
     media_url: str | None = None
     raw_metadata: dict[str, object] = field(default_factory=dict)

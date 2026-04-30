@@ -47,6 +47,10 @@ class AlertsConfig(StrictConfigModel):
     crm_pending_threshold: int = 50
 
 
+class HandoffConfig(StrictConfigModel):
+    notification_phone: str = ""
+
+
 class BrandConfig(StrictConfigModel):
     name: str
     slug: str = "selectrucks-zapata"
@@ -61,6 +65,7 @@ class BrandConfig(StrictConfigModel):
     inventory_columns: InventoryColumnsConfig = Field(default_factory=InventoryColumnsConfig)
     system_messages: SystemMessagesConfig = Field(default_factory=SystemMessagesConfig)
     alerts: AlertsConfig = Field(default_factory=AlertsConfig)
+    handoff: HandoffConfig = Field(default_factory=HandoffConfig)
 
 
 class FunnelStateConfig(StrictConfigModel):

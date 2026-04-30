@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
@@ -9,6 +10,7 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 import sentry_sdk
 import structlog
 
+from adapters.messaging.evolution.outbound_cache import outbound_cache
 from core.brand.schema import Brand
 from core.domain.branch import Branch
 from core.domain.classification import MessageClassification
@@ -49,6 +51,28 @@ DEBOUNCE_SECONDS = 8.0
 _debounce_tasks: dict[str, asyncio.Task[bool]] = {}
 _debounce_latest: dict[str, InboundEvent] = {}
 _debounce_lock = asyncio.Lock()
+_advisor_silence: dict[str, float] = {}
+_SILENCE_SECONDS = 3600.0  # 60 minutos
+
+
+def _is_human_advisor_message(
+    from_me: bool,
+    message_id: str,
+    is_in_bot_cache: bool,
+) -> bool:
+    """
+    Devuelve True si el mensaje fue enviado por el asesor humano
+    (no por el bot) desde el numero compartido.
+
+    Logica:
+    - Si from_me es False -> mensaje del cliente -> no es asesor.
+    - Si from_me es True y message_id esta en cache del bot -> bot -> no es asesor.
+    - Si from_me es True y message_id NO esta en cache -> asesor humano.
+    """
+    del message_id
+    if not from_me:
+        return False
+    return not is_in_bot_cache
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,6 +138,43 @@ class InboundMessageHandler:
         except (InvalidInboundPayloadError, UnsupportedEventTypeError) as exc:
             logger.info("inbound_webhook_ignored_invalid_payload", reason=str(exc))
             return InboundHandleResult(status="invalid_payload", processed=False)
+
+        if _advisor_silence.get(inbound_event.from_phone, 0) > time.monotonic():
+            logger.debug(
+                "lead_silenced_by_advisor",
+                phone=inbound_event.from_phone[:4] + "***",
+            )
+            return InboundHandleResult(
+                status="silenced",
+                processed=False,
+            )
+
+        if inbound_event.from_me:
+            is_bot_message = await outbound_cache.contains(inbound_event.message_id)
+            if _is_human_advisor_message(
+                from_me=inbound_event.from_me,
+                message_id=inbound_event.message_id,
+                is_in_bot_cache=is_bot_message,
+            ):
+                logger.info(
+                    "human_advisor_message_detected",
+                    message_id=inbound_event.message_id,
+                    phone=inbound_event.from_phone[:4] + "***",
+                )
+                await self._apply_advisor_silence(inbound_event)
+                return InboundHandleResult(
+                    status="advisor_message",
+                    processed=False,
+                )
+
+            logger.debug(
+                "bot_own_message_reflected",
+                message_id=inbound_event.message_id,
+            )
+            return InboundHandleResult(
+                status="own_message_skipped",
+                processed=False,
+            )
 
         if await self._silenced_user_repository.is_silenced(inbound_event.from_phone):
             logger.info(
@@ -377,6 +438,14 @@ class InboundMessageHandler:
             lead_id=lead_profile.id,
             event_type=enriched_inbound_event.event_type,
             message_kind=enriched_inbound_event.kind,
+        )
+
+    async def _apply_advisor_silence(self, event: InboundEvent) -> None:
+        _advisor_silence[event.from_phone] = time.monotonic() + _SILENCE_SECONDS
+        logger.info(
+            "advisor_silence_applied",
+            phone=event.from_phone[:4] + "***",
+            duration_minutes=60,
         )
 
     async def _get_or_create_lead_profile(
