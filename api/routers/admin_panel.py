@@ -2500,6 +2500,97 @@ async def admin_panel() -> HTMLResponse:
       text-transform: uppercase;
       letter-spacing: 0.6px;
     }
+    .usuarios-view {
+      display: grid;
+      gap: 14px;
+    }
+    .usuarios-view .users-card {
+      width: 100%;
+      max-width: none;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 10px 30px rgba(2, 6, 23, 0.25);
+    }
+    .section-header h2 {
+      margin: 0;
+      font-size: 1.06rem;
+      font-weight: 700;
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .table-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 9999px;
+      padding: 2px 8px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .badge-green {
+      background: #22c55e;
+      color: #fff;
+    }
+    .badge-red {
+      background: #ef4444;
+      color: #fff;
+    }
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+    }
+    .modal-content {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      min-width: 320px;
+      width: min(92vw, 420px);
+      padding: 18px;
+      display: grid;
+      gap: 10px;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .error-msg {
+      color: #ef4444;
+      font-size: 0.85rem;
+      min-height: 1.2em;
+      margin-top: 4px;
+    }
+    .users-feedback {
+      font-size: 0.85rem;
+      min-height: 1.2em;
+      color: var(--muted);
+    }
+    .users-feedback.error {
+      color: #ef4444;
+    }
+    @media (max-width: 900px) {
+      .form-row {
+        grid-template-columns: 1fr;
+      }
+      .modal-content {
+        min-width: 0;
+      }
+    }
   </style>
 </head>
 <body>
@@ -2555,6 +2646,7 @@ async def admin_panel() -> HTMLResponse:
         <button class="tab" data-tab="monitor" type="button" role="tab" aria-selected="false" tabindex="-1">Monitor</button>
         <button class="tab" data-tab="knowledge" type="button" role="tab" aria-selected="false" tabindex="-1">Base de conocimiento</button>
         <button class="tab" data-tab="security" type="button" role="tab" aria-selected="false" tabindex="-1">Seguridad</button>
+        <button class="tab" data-tab="usuarios" type="button" role="tab" aria-selected="false" tabindex="-1">Usuarios</button>
         <button class="tab" data-tab="audit_log" type="button" role="tab" aria-selected="false" tabindex="-1">Registro actividad</button>
       </nav>
     </header>
@@ -2931,6 +3023,52 @@ async def admin_panel() -> HTMLResponse:
         </section>
       </section>
 
+      <section id="usuarios-view" class="usuarios-view hidden" aria-label="Gestión de usuarios">
+        <div class="section-header">
+          <h2>Gestión de Usuarios</h2>
+        </div>
+
+        <div class="card users-card">
+          <h3>Nuevo usuario</h3>
+          <div class="form-row">
+            <input type="text" id="new-username" placeholder="Username (mín. 3 chars)" />
+            <input type="password" id="new-password" placeholder="Contraseña (mín. 8 chars)" />
+            <button id="btn-create-user" class="csvgen-btn" type="button">Crear usuario</button>
+          </div>
+          <div id="create-user-error" class="error-msg"></div>
+          <div id="users-feedback" class="users-feedback"></div>
+        </div>
+
+        <div class="card users-card">
+          <table id="users-table" class="audit-table">
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th>Estado</th>
+                <th>Último acceso</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="users-tbody">
+              <tr><td colspan="4" class="csvgen-note">Sin datos</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div id="modal-change-password" class="modal hidden">
+          <div class="modal-content">
+            <h3>Cambiar contraseña</h3>
+            <input type="password" id="modal-new-password" placeholder="Nueva contraseña" />
+            <input type="password" id="modal-confirm-password" placeholder="Confirmar contraseña" />
+            <div id="modal-error" class="error-msg"></div>
+            <div class="modal-actions">
+              <button id="btn-modal-save" class="csvgen-btn" type="button">Guardar</button>
+              <button id="btn-modal-cancel" class="csvgen-btn" type="button">Cancelar</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <div id="tab-placeholder" class="placeholder hidden">Selecciona una pestaña para continuar.</div>
     </main>
   </div>
@@ -3066,6 +3204,19 @@ async def admin_panel() -> HTMLResponse:
     const security2faSecret = document.getElementById("security-2fa-secret");
     const security2faCode = document.getElementById("security-2fa-code");
     const security2faConfirmBtn = document.getElementById("security-2fa-confirm-btn");
+    const usuariosView = document.getElementById("usuarios-view");
+    const newUsernameInput = document.getElementById("new-username");
+    const newPasswordInput = document.getElementById("new-password");
+    const createUserBtn = document.getElementById("btn-create-user");
+    const createUserError = document.getElementById("create-user-error");
+    const usersFeedback = document.getElementById("users-feedback");
+    const usersTbody = document.getElementById("users-tbody");
+    const usersModal = document.getElementById("modal-change-password");
+    const modalNewPasswordInput = document.getElementById("modal-new-password");
+    const modalConfirmPasswordInput = document.getElementById("modal-confirm-password");
+    const modalError = document.getElementById("modal-error");
+    const modalSaveBtn = document.getElementById("btn-modal-save");
+    const modalCancelBtn = document.getElementById("btn-modal-cancel");
     const auditLogView = document.getElementById("audit-log-view");
     const auditActionFilter = document.getElementById("audit-action-filter");
     const auditFilterBtn = document.getElementById("audit-filter-btn");
@@ -3097,6 +3248,7 @@ async def admin_panel() -> HTMLResponse:
     let csvgenGeneratedBlob = null;
     let brandConfig = { ...BRAND_DEFAULTS };
     let pendingPreAuthToken = null;
+    let currentEditUserId = null;
     let auditOffset = 0;
     const auditLimit = 50;
 
@@ -4607,6 +4759,165 @@ con [tu unidad|el {vehiculo}]?`,
       }
     }
 
+    function setUsersFeedback(message, isError = false) {
+      usersFeedback.textContent = message;
+      usersFeedback.classList.toggle("error", isError);
+    }
+
+    function closeChangePasswordModal() {
+      currentEditUserId = null;
+      modalNewPasswordInput.value = "";
+      modalConfirmPasswordInput.value = "";
+      modalError.textContent = "";
+      usersModal.classList.add("hidden");
+    }
+
+    function openChangePassword(userId) {
+      currentEditUserId = userId;
+      modalNewPasswordInput.value = "";
+      modalConfirmPasswordInput.value = "";
+      modalError.textContent = "";
+      usersModal.classList.remove("hidden");
+      setTimeout(() => modalNewPasswordInput.focus(), 50);
+    }
+
+    async function loadUsuarios() {
+      setUsersFeedback("", false);
+      try {
+        const response = await apiFetch("/api/v1/auth/users", { method: "GET" });
+        if (!response.ok) {
+          throw new Error(`http_${response.status}`);
+        }
+        const users = await response.json();
+        if (!Array.isArray(users) || users.length === 0) {
+          usersTbody.innerHTML = `<tr><td colspan="4" class="csvgen-note">Sin usuarios registrados.</td></tr>`;
+          return;
+        }
+        usersTbody.innerHTML = users.map((user) => {
+          const safeUsername = escapeHtml(String(user.username || ""));
+          const stateBadge = user.is_active
+            ? '<span class="badge badge-green">Activo</span>'
+            : '<span class="badge badge-red">Inactivo</span>';
+          const lastLogin = user.last_login_at ? formatDateTime(user.last_login_at) : "Nunca";
+          const actionLabel = user.is_active ? "Desactivar" : "Activar";
+          return `
+            <tr>
+              <td>${safeUsername}</td>
+              <td>${stateBadge}</td>
+              <td>${escapeHtml(lastLogin)}</td>
+              <td>
+                <div class="table-actions">
+                  <button class="csvgen-btn" type="button" data-user-action="toggle-status" data-user-id="${escapeHtml(String(user.id))}" data-user-active="${user.is_active ? "1" : "0"}">${actionLabel}</button>
+                  <button class="csvgen-btn" type="button" data-user-action="change-password" data-user-id="${escapeHtml(String(user.id))}">Cambiar contraseña</button>
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join("");
+      } catch (error) {
+        usersTbody.innerHTML = `<tr><td colspan="4" class="csvgen-note">No se pudo cargar la lista.</td></tr>`;
+        setUsersFeedback("Error cargando usuarios.", true);
+      }
+    }
+
+    async function createUser() {
+      createUserError.textContent = "";
+      setUsersFeedback("", false);
+      const username = newUsernameInput.value.trim();
+      const password = newPasswordInput.value;
+
+      if (username.length < 3) {
+        createUserError.textContent = "Username mínimo 3 caracteres.";
+        return;
+      }
+      if (password.length < 8) {
+        createUserError.textContent = "Contraseña mínimo 8 caracteres.";
+        return;
+      }
+      if (!/^[A-Za-z0-9.-]{3,50}$/.test(username)) {
+        createUserError.textContent = "Solo letras, números, puntos y guiones.";
+        return;
+      }
+
+      try {
+        const response = await apiFetch("/api/v1/auth/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        });
+        if (response.status === 409) {
+          createUserError.textContent = "Ese username ya existe.";
+          return;
+        }
+        if (!response.ok) {
+          throw new Error(`http_${response.status}`);
+        }
+        newUsernameInput.value = "";
+        newPasswordInput.value = "";
+        setUsersFeedback("Usuario creado correctamente.", false);
+        await loadUsuarios();
+      } catch (error) {
+        createUserError.textContent = "Error al crear usuario.";
+      }
+    }
+
+    async function toggleUserStatus(userId, currentlyActive) {
+      createUserError.textContent = "";
+      setUsersFeedback("", false);
+      try {
+        const response = await apiFetch(`/api/v1/auth/users/${userId}/status`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ is_active: !currentlyActive }),
+        });
+        if (response.status === 400) {
+          setUsersFeedback("No puedes desactivar tu propio usuario.", true);
+          return;
+        }
+        if (!response.ok) {
+          throw new Error(`http_${response.status}`);
+        }
+        await loadUsuarios();
+      } catch (error) {
+        setUsersFeedback("No se pudo actualizar el estado.", true);
+      }
+    }
+
+    async function saveNewPassword() {
+      modalError.textContent = "";
+      const newPassword = modalNewPasswordInput.value;
+      const confirmPassword = modalConfirmPasswordInput.value;
+
+      if (newPassword.length < 8) {
+        modalError.textContent = "Mínimo 8 caracteres.";
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        modalError.textContent = "Las contraseñas no coinciden.";
+        return;
+      }
+      if (!currentEditUserId) {
+        modalError.textContent = "No se encontró el usuario a editar.";
+        return;
+      }
+
+      try {
+        const response = await apiFetch(`/api/v1/auth/users/${currentEditUserId}/password`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ new_password: newPassword }),
+        });
+        if (!response.ok) {
+          throw new Error(`http_${response.status}`);
+        }
+        closeChangePasswordModal();
+        setUsersFeedback("Contraseña actualizada.", false);
+        await loadUsuarios();
+      } catch (error) {
+        modalError.textContent = "Error al cambiar contraseña.";
+      }
+    }
+
     function renderAuditEntries(entries) {
       if (!Array.isArray(entries) || entries.length === 0) {
         auditLogBody.innerHTML = `<tr><td colspan="4" class="csvgen-note">Sin actividad registrada.</td></tr>`;
@@ -4777,6 +5088,7 @@ con [tu unidad|el {vehiculo}]?`,
         monitorView.classList.add("hidden");
         knowledgeView.classList.add("hidden");
         securityView.classList.add("hidden");
+        usuariosView.classList.add("hidden");
         auditLogView.classList.add("hidden");
         dashboardView.classList.remove("hidden");
         loadDashboardStats();
@@ -4795,6 +5107,7 @@ con [tu unidad|el {vehiculo}]?`,
         monitorView.classList.add("hidden");
         knowledgeView.classList.add("hidden");
         securityView.classList.add("hidden");
+        usuariosView.classList.add("hidden");
         auditLogView.classList.add("hidden");
         campaignsView.classList.remove("hidden");
         loadCampaignsState();
@@ -4813,6 +5126,7 @@ con [tu unidad|el {vehiculo}]?`,
         monitorView.classList.add("hidden");
         knowledgeView.classList.add("hidden");
         securityView.classList.add("hidden");
+        usuariosView.classList.add("hidden");
         auditLogView.classList.add("hidden");
         templatesView.classList.remove("hidden");
         runTemplateLiveAnalysis();
@@ -4835,6 +5149,7 @@ con [tu unidad|el {vehiculo}]?`,
         csvgenView.classList.remove("hidden");
         knowledgeView.classList.add("hidden");
         securityView.classList.add("hidden");
+        usuariosView.classList.add("hidden");
         auditLogView.classList.add("hidden");
         return;
       }
@@ -4850,6 +5165,7 @@ con [tu unidad|el {vehiculo}]?`,
         monitorView.classList.add("hidden");
         knowledgeView.classList.add("hidden");
         securityView.classList.add("hidden");
+        usuariosView.classList.add("hidden");
         auditLogView.classList.add("hidden");
         conversationsView.classList.remove("hidden");
         if (!currentTraceData) {
@@ -4871,6 +5187,7 @@ con [tu unidad|el {vehiculo}]?`,
         monitorView.classList.remove("hidden");
         knowledgeView.classList.add("hidden");
         securityView.classList.add("hidden");
+        usuariosView.classList.add("hidden");
         auditLogView.classList.add("hidden");
         loadMonitorStats();
         startMonitorRefresh();
@@ -4889,6 +5206,7 @@ con [tu unidad|el {vehiculo}]?`,
         monitorView.classList.add("hidden");
         knowledgeView.classList.remove("hidden");
         securityView.classList.add("hidden");
+        usuariosView.classList.add("hidden");
         auditLogView.classList.add("hidden");
         loadKnowledgeSources();
         return;
@@ -4906,8 +5224,27 @@ con [tu unidad|el {vehiculo}]?`,
         monitorView.classList.add("hidden");
         knowledgeView.classList.add("hidden");
         securityView.classList.remove("hidden");
+        usuariosView.classList.add("hidden");
         auditLogView.classList.add("hidden");
         load2faStatus();
+        return;
+      }
+
+      if (tabName === "usuarios") {
+        stopCampaignsRefresh();
+        stopMonitorRefresh();
+        tabPlaceholder.classList.add("hidden");
+        dashboardView.classList.add("hidden");
+        campaignsView.classList.add("hidden");
+        templatesView.classList.add("hidden");
+        csvgenView.classList.add("hidden");
+        conversationsView.classList.add("hidden");
+        monitorView.classList.add("hidden");
+        knowledgeView.classList.add("hidden");
+        securityView.classList.add("hidden");
+        usuariosView.classList.remove("hidden");
+        auditLogView.classList.add("hidden");
+        loadUsuarios();
         return;
       }
 
@@ -4923,6 +5260,7 @@ con [tu unidad|el {vehiculo}]?`,
         monitorView.classList.add("hidden");
         knowledgeView.classList.add("hidden");
         securityView.classList.add("hidden");
+        usuariosView.classList.add("hidden");
         auditLogView.classList.remove("hidden");
         loadAuditLog();
         return;
@@ -4938,6 +5276,7 @@ con [tu unidad|el {vehiculo}]?`,
       monitorView.classList.add("hidden");
       knowledgeView.classList.add("hidden");
       securityView.classList.add("hidden");
+      usuariosView.classList.add("hidden");
       auditLogView.classList.add("hidden");
       tabPlaceholder.classList.remove("hidden");
       const activeLabel = tabs.querySelector(`.tab[data-tab="${tabName}"]`)?.textContent || "Sección";
@@ -5140,6 +5479,44 @@ con [tu unidad|el {vehiculo}]?`,
     auditNextBtn.addEventListener("click", () => {
       auditOffset += auditLimit;
       loadAuditLog();
+    });
+
+    createUserBtn?.addEventListener("click", () => {
+      createUser();
+    });
+
+    usersTbody?.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLButtonElement)) {
+        return;
+      }
+      const action = target.dataset.userAction;
+      const userId = target.dataset.userId || "";
+      if (!userId) {
+        return;
+      }
+      if (action === "toggle-status") {
+        const currentlyActive = target.dataset.userActive === "1";
+        toggleUserStatus(userId, currentlyActive);
+        return;
+      }
+      if (action === "change-password") {
+        openChangePassword(userId);
+      }
+    });
+
+    modalSaveBtn?.addEventListener("click", () => {
+      saveNewPassword();
+    });
+
+    modalCancelBtn?.addEventListener("click", () => {
+      closeChangePasswordModal();
+    });
+
+    usersModal?.addEventListener("click", (event) => {
+      if (event.target === usersModal) {
+        closeChangePasswordModal();
+      }
     });
 
     security2faSetupBtn.addEventListener("click", () => {
