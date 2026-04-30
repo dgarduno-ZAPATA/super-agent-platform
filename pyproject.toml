@@ -25,6 +25,7 @@ dependencies = [
     "sentry-sdk[fastapi]>=2,<3",
     "openai>=1.30.0",
     "passlib[bcrypt]>=1.7.4,<2.0",
+    "bcrypt>=3.2.0,<4.0.0",
     "pyotp>=2.9.0",
     "qrcode[pil]>=7.4.2",
     "gspread>=6.1.4,<7.0.0",
@@ -77,7 +78,7 @@ pyotp = ">=2.9.0"
 qrcode = {version = ">=7.4.2", extras = ["pil"]}
 gspread = ">=6.1.4,<7.0.0"
 passlib = {version = ">=1.7.4,<2.0", extras = ["bcrypt"]}
-bcrypt = ">=4,<5"
+bcrypt = ">=3.2.0,<4.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.1.1"
